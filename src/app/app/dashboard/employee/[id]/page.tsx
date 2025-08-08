@@ -66,7 +66,9 @@ export default function EmployeeOnboardingPage() {
           setOnboardingPlan(planData);
           
           // Fetch resources for this employee
+          console.log('Employee page - Current new hire ID:', currentNewHire.id, 'Type:', typeof currentNewHire.id);
           const resourcesData = await fetchResources(currentNewHire.id);
+          console.log('Employee page - Fetched resources:', resourcesData);
           setResources(resourcesData);
         }
       } catch (err) {
@@ -560,145 +562,103 @@ export default function EmployeeOnboardingPage() {
                 Useful Resources
               </h3>
               
-              <div style={{ display: "grid", gap: "1rem" }}>
-                {/* Company Resources */}
-                <div style={{ 
-                  background: COLORS.white, 
-                  borderRadius: 12, 
-                  padding: "1.5rem",
-                  boxShadow: "0 2px 8px rgba(0,0,0,0.1)",
-                  border: `1px solid ${COLORS.borderGray}`
-                }}>
-                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "1rem" }}>
-                    <h4 style={{ fontSize: 18, fontWeight: 600, color: COLORS.darkBlue, margin: 0 }}>
-                      Company Resources
-                    </h4>
-                    <button 
-                      onClick={() => setShowAddResource(true)}
-                      style={{
-                        background: COLORS.teal,
-                        color: COLORS.white,
-                        border: "none",
-                        borderRadius: 6,
-                        padding: "4px 8px",
-                        fontSize: 14,
-                        fontWeight: 600,
-                        cursor: "pointer"
-                      }}
-                    >
-                      +
-                    </button>
-                  </div>
-                  <div style={{ display: "flex", flexDirection: "column", gap: "0.5rem" }}>
-                    {resources.filter(r => r.category === 'Company Resources').map((resource) => (
-                      <div key={resource.id} style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-                        <a 
-                          href={resource.type === 'link' ? resource.url : '#'} 
-                          target={resource.type === 'link' ? "_blank" : undefined}
-                          rel={resource.type === 'link' ? "noopener noreferrer" : undefined}
-                          style={{ 
-                            color: COLORS.teal, 
-                            textDecoration: "none",
-                            padding: "0.5rem",
-                            borderRadius: 6,
-                            background: `${COLORS.teal}10`,
-                            transition: "all 0.2s",
-                            flex: 1,
-                            display: "flex",
-                            alignItems: "center",
-                            gap: 8
-                          }}
-                        >
-                          {getResourceIcon(resource.type)} {resource.title}
-                        </a>
-                        <button 
-                          onClick={() => setEditingResource(resource)}
-                          style={{
-                            background: "none",
-                            border: "none",
-                            color: COLORS.darkBlue,
-                            fontSize: 12,
-                            cursor: "pointer",
-                            padding: "0.25rem 0.5rem",
-                            marginLeft: "0.5rem"
-                          }}
-                        >
-                          Edit
-                        </button>
-                      </div>
-                    ))}
-                  </div>
-                </div>
+              {(() => {
+                // Get unique categories that have resources
+                const categoriesWithResources = [...new Set(resources.map(r => r.category))];
+                
 
-                {/* IT Resources */}
-                <div style={{ 
-                  background: COLORS.white, 
-                  borderRadius: 12, 
-                  padding: "1.5rem",
-                  boxShadow: "0 2px 8px rgba(0,0,0,0.1)",
-                  border: `1px solid ${COLORS.borderGray}`
-                }}>
-                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "1rem" }}>
-                    <h4 style={{ fontSize: 18, fontWeight: 600, color: COLORS.darkBlue, margin: 0 }}>
-                      IT Resources
-                    </h4>
-                    <button 
-                      onClick={() => setShowAddResource(true)}
-                      style={{
-                        background: COLORS.teal,
-                        color: COLORS.white,
-                        border: "none",
-                        borderRadius: 6,
-                        padding: "4px 8px",
-                        fontSize: 14,
-                        fontWeight: 600,
-                        cursor: "pointer"
-                      }}
-                    >
-                      +
-                    </button>
-                  </div>
-                  <div style={{ display: "flex", flexDirection: "column", gap: "0.5rem" }}>
-                    {resources.filter(r => r.category === 'IT Resources').map((resource) => (
-                      <div key={resource.id} style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-                        <a 
-                          href={resource.type === 'link' ? resource.url : '#'} 
-                          target={resource.type === 'link' ? "_blank" : undefined}
-                          rel={resource.type === 'link' ? "noopener noreferrer" : undefined}
-                          style={{ 
-                            color: COLORS.teal, 
-                            textDecoration: "none",
-                            padding: "0.5rem",
-                            borderRadius: 6,
-                            background: `${COLORS.teal}10`,
-                            transition: "all 0.2s",
-                            flex: 1,
-                            display: "flex",
-                            alignItems: "center",
-                            gap: 8
-                          }}
-                        >
-                          {getResourceIcon(resource.type)} {resource.title}
-                        </a>
-                        <button 
-                          onClick={() => setEditingResource(resource)}
-                          style={{
-                            background: "none",
-                            border: "none",
-                            color: COLORS.darkBlue,
-                            fontSize: 12,
-                            cursor: "pointer",
-                            padding: "0.25rem 0.5rem",
-                            marginLeft: "0.5rem"
-                          }}
-                        >
-                          Edit
-                        </button>
+                
+                return (
+                  <div style={{ display: "grid", gap: "1rem" }}>
+                    {categoriesWithResources.map((category) => (
+                      <div key={category} style={{ 
+                        background: COLORS.white, 
+                        borderRadius: 12, 
+                        padding: "1.5rem",
+                        boxShadow: "0 2px 8px rgba(0,0,0,0.1)",
+                        border: `1px solid ${COLORS.borderGray}`
+                      }}>
+                        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "1rem" }}>
+                          <h4 style={{ fontSize: 18, fontWeight: 600, color: COLORS.darkBlue, margin: 0 }}>
+                            {category}
+                          </h4>
+                          <button 
+                            onClick={() => setShowAddResource(true)}
+                            style={{
+                              background: COLORS.teal,
+                              color: COLORS.white,
+                              border: "none",
+                              borderRadius: 6,
+                              padding: "4px 8px",
+                              fontSize: 14,
+                              fontWeight: 600,
+                              cursor: "pointer"
+                            }}
+                          >
+                            +
+                          </button>
+                        </div>
+                        <div style={{ display: "flex", flexDirection: "column", gap: "0.5rem" }}>
+                          {resources.filter(r => r.category === category).map((resource) => (
+                            <div key={resource.id} style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                              <a 
+                                href={resource.type === 'link' ? resource.url : resource.type === 'file' ? `/api/resources/${resource.id}/download` : '#'} 
+                                target={resource.type === 'link' ? "_blank" : resource.type === 'file' ? "_blank" : undefined}
+                                rel={resource.type === 'link' ? "noopener noreferrer" : resource.type === 'file' ? "noopener noreferrer" : undefined}
+                                style={{ 
+                                  color: COLORS.teal, 
+                                  textDecoration: "none",
+                                  padding: "0.5rem",
+                                  borderRadius: 6,
+                                  background: `${COLORS.teal}10`,
+                                  transition: "all 0.2s",
+                                  flex: 1,
+                                  display: "flex",
+                                  alignItems: "center",
+                                  gap: 8
+                                }}
+                              >
+                                {getResourceIcon(resource.type)} {resource.title}
+                                {resource.type === 'file' && (
+                                  <span style={{ fontSize: 10, opacity: 0.7 }}>(Download)</span>
+                                )}
+                              </a>
+                              <div style={{ display: "flex", gap: "0.25rem" }}>
+                                <button 
+                                  onClick={() => setEditingResource(resource)}
+                                  style={{
+                                    background: "none",
+                                    border: "none",
+                                    color: COLORS.darkBlue,
+                                    fontSize: 12,
+                                    cursor: "pointer",
+                                    padding: "0.25rem 0.5rem"
+                                  }}
+                                >
+                                  Edit
+                                </button>
+                                <button 
+                                  onClick={() => handleDeleteResource(resource.id)}
+                                  style={{
+                                    background: "none",
+                                    border: "none",
+                                    color: COLORS.errorRed,
+                                    fontSize: 12,
+                                    cursor: "pointer",
+                                    padding: "0.25rem 0.5rem"
+                                  }}
+                                >
+                                  Delete
+                                </button>
+                              </div>
+                            </div>
+                          ))}
+                        </div>
                       </div>
                     ))}
                   </div>
-                </div>
-              </div>
+                );
+              })()}
             </div>
           )}
         </div>
@@ -803,15 +763,44 @@ function ResourceForm({
     accessible_employees: resource?.accessible_employees || []
   });
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const [selectedFile, setSelectedFile] = useState<File | null>(null);
+
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    
+    let finalFilePath = formData.file_path;
+    
+    // If it's a file upload and we have a selected file, upload it first
+    if (formData.type === 'file' && selectedFile) {
+      try {
+        const formDataToUpload = new FormData();
+        formDataToUpload.append('file', selectedFile);
+        formDataToUpload.append('title', formData.title);
+        
+        const uploadResponse = await fetch('/api/resources/upload', {
+          method: 'POST',
+          body: formDataToUpload
+        });
+        
+        if (!uploadResponse.ok) {
+          throw new Error('File upload failed');
+        }
+        
+        const uploadResult = await uploadResponse.json();
+        finalFilePath = uploadResult.file_path;
+      } catch (error) {
+        console.error('Error uploading file:', error);
+        alert('Failed to upload file. Please try again.');
+        return;
+      }
+    }
     
     const resourceData = {
       title: formData.title,
       description: formData.description,
       type: formData.type as 'link' | 'file',
       url: formData.type === 'link' ? formData.url : undefined,
-      file_path: formData.type === 'file' ? formData.file_path : undefined,
+      file_path: formData.type === 'file' ? finalFilePath : undefined,
       category: formData.category,
       accessible_to: formData.accessible_to as 'all' | 'specific',
       accessible_employees: formData.accessible_to === 'all' ? [] : formData.accessible_employees,
@@ -922,6 +911,7 @@ function ResourceForm({
             onChange={(e) => {
               const file = e.target.files?.[0];
               if (file) {
+                setSelectedFile(file);
                 setFormData(prev => ({ 
                   ...prev, 
                   file_path: file.name 

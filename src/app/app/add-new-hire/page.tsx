@@ -1,7 +1,7 @@
 'use client';
 import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
-import { useUser, SignOutButton } from "@clerk/nextjs";
+import { useUser } from "@clerk/nextjs";
 import Image from "next/image";
 import Link from "next/link";
 import { fetchManagers, type Manager } from "@/lib/api";
@@ -307,49 +307,29 @@ export default function AddNewHireForm() {
         <div style={{ display: "flex", alignItems: "center", gap: "1rem" }}>
           <Link href="/app/dashboard/manager" style={{ textDecoration: 'none' }}>
             <button style={{
-              background: COLORS.teal,
+              background: COLORS.darkBlue,
               color: COLORS.white,
               border: "none",
-              borderRadius: 8,
-              padding: "8px 16px",
+              borderRadius: 10,
+              padding: "10px 20px",
               fontWeight: 600,
               fontSize: 14,
               cursor: "pointer",
-              transition: "background 0.2s"
-            }}>
-              Back to Dashboard
+              transition: "all 0.2s",
+              boxShadow: "0 4px 12px rgba(38,70,83,0.2)"
+            }}
+            onMouseEnter={(e) => {
+              e.currentTarget.style.transform = "translateY(-2px)";
+              e.currentTarget.style.boxShadow = "0 6px 16px rgba(38,70,83,0.3)";
+            }}
+            onMouseLeave={(e) => {
+              e.currentTarget.style.transform = "translateY(0)";
+              e.currentTarget.style.boxShadow = "0 4px 12px rgba(38,70,83,0.2)";
+            }}
+            >
+              ← Back to Dashboard
             </button>
           </Link>
-          <span style={{
-            background: COLORS.teal,
-            color: COLORS.white,
-            borderRadius: "50%",
-            width: 48,
-            height: 48,
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "center",
-            fontWeight: 700,
-            fontSize: 24,
-            boxShadow: "0 2px 8px rgba(42,157,143,0.18)",
-          }}>
-            {currentManager?.name?.charAt(0) || 'M'}
-          </span>
-          <SignOutButton>
-            <button style={{
-              background: COLORS.red,
-              color: COLORS.white,
-              border: "none",
-              borderRadius: 8,
-              padding: "8px 16px",
-              fontWeight: 600,
-              fontSize: 14,
-              cursor: "pointer",
-              transition: "background 0.2s"
-            }}>
-              Sign Out
-            </button>
-          </SignOutButton>
         </div>
       </nav>
 

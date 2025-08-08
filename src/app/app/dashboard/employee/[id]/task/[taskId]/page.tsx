@@ -25,7 +25,7 @@ const COLORS = {
 
 const GRADIENT_BG = "linear-gradient(135deg, #2A9D8F 0%, #264653 100%)";
 
-export default function TaskDetailPage() {
+export default function EmployeeTaskDetailPage() {
   const { user, isLoaded } = useUser();
   const router = useRouter();
   const params = useParams();
@@ -49,8 +49,8 @@ export default function TaskDetailPage() {
   const [editingComment, setEditingComment] = useState<TaskComment | null>(null);
   const [editingCommentText, setEditingCommentText] = useState('');
 
-  const currentManager = managers.find(manager => manager.email === user?.primaryEmailAddress?.emailAddress);
   const currentNewHire = newHires.find(hire => hire.id.toString() === newHireId?.toString());
+  const currentManager = managers.find(manager => manager.id === currentNewHire?.manager_id);
   const currentBuddy = buddies.find(buddy => buddy.id === currentNewHire?.buddy_id);
 
   useEffect(() => {
@@ -72,25 +72,25 @@ export default function TaskDetailPage() {
           const plan = await fetchOnboardingPlan(currentNewHire.id);
           setOnboardingPlan(plan);
           
-          // Find the specific task
-          if (plan && plan.plan_data && plan.plan_data.milestones) {
-            for (const milestone of plan.plan_data.milestones) {
-              const task = milestone.tasks?.find((t: any) => 
-                t.id?.toString() === taskId?.toString() || 
-                t.name === decodeURIComponent(taskId as string)
-              );
-              if (task) {
-                setCurrentTask(task);
-                setCurrentMilestone(milestone);
-                setTaskStatus(task.status || "not_started");
-                
-                // Fetch comments for this task
-                const taskComments = await fetchTaskComments(task.id || task.name, currentNewHire.id);
-                setComments(taskComments);
-                break;
-              }
+                  // Find the specific task
+        if (plan && plan.plan_data && plan.plan_data.milestones) {
+          for (const milestone of plan.plan_data.milestones) {
+            const task = milestone.tasks?.find((t: any) => 
+              t.id?.toString() === taskId?.toString() || 
+              t.name === decodeURIComponent(taskId as string)
+            );
+            if (task) {
+              setCurrentTask(task);
+              setCurrentMilestone(milestone);
+              setTaskStatus(task.status || "not_started");
+              
+              // Fetch comments for this task
+              const taskComments = await fetchTaskComments(task.id || task.name, currentNewHire.id);
+              setComments(taskComments);
+              break;
             }
           }
+        }
         }
       } catch (err) {
         setError('Failed to fetch data');
@@ -114,7 +114,7 @@ export default function TaskDetailPage() {
       const comment = await addTaskComment(
         currentTask.id || currentTask.name,
         currentNewHire.id,
-        currentManager?.name || 'Manager',
+        currentNewHire?.name || 'Employee',
         user?.primaryEmailAddress?.emailAddress || '',
         newComment.trim()
       );
@@ -228,7 +228,7 @@ export default function TaskDetailPage() {
   };
 
   const handleBackToPlan = () => {
-    router.push(`/app/dashboard/team/${newHireId}`);
+    router.push(`/app/dashboard/employee?tab=Plan`);
   };
 
   const handleAddResource = async (resourceData: any) => {
@@ -321,6 +321,34 @@ export default function TaskDetailPage() {
     }
   };
 
+  // Function to get assignee display name
+  const getAssigneeDisplayName = (assignee: string) => {
+    if (!assignee) return 'You';
+    
+    switch (assignee.toLowerCase()) {
+      case 'new_hire':
+      case 'employee':
+      case 'you':
+        return currentNewHire ? `${currentNewHire.name} ${(currentNewHire as any)["surname (s)"] || ''}`.trim() : 'You';
+      case 'manager':
+        return currentManager ? `${currentManager.name} ${(currentManager as any)["surname (s)"] || ''}`.trim() : 'Manager';
+      case 'buddy':
+        return currentBuddy ? `${currentBuddy.name} ${(currentBuddy as any)["surname (s)"] || ''}`.trim() : 'Buddy';
+      case 'hr':
+        return 'HR Team';
+      case 'it':
+        return 'IT Team';
+      default:
+        // If it's not a known role, try to find a person with that name
+        const allPeople = [...managers, ...newHires, ...buddies];
+        const person = allPeople.find(p => 
+          p.name?.toLowerCase() === assignee.toLowerCase() ||
+          `${p.name} ${(p as any)["surname (s)"] || ''}`.toLowerCase().trim() === assignee.toLowerCase()
+        );
+        return person ? `${person.name} ${(person as any)["surname (s)"] || ''}`.trim() : assignee;
+    }
+  };
+
   if (!isLoaded || loading) {
     return (
       <div style={{ 
@@ -370,72 +398,55 @@ export default function TaskDetailPage() {
             style={{
               background: "none",
               border: "none",
-              fontSize: 16,
-              color: COLORS.darkBlue,
+              fontSize: 24,
               cursor: "pointer",
-              display: "flex",
-              alignItems: "center",
-              gap: "0.5rem"
+              color: COLORS.darkBlue
             }}
           >
-            ← Back to Plan
+            ←
           </button>
-          <div style={{ width: "1px", height: "24px", background: COLORS.borderGray }}></div>
-          <h1 style={{ fontSize: 24, fontWeight: 700, color: COLORS.darkBlue, margin: 0 }}>
-            {currentTask.name}
-          </h1>
-        </div>
-        
-        <div style={{ display: "flex", alignItems: "center", gap: "1rem" }}>
-          <div style={{ 
-            display: "flex", 
-            alignItems: "center", 
-            gap: "0.5rem",
-            padding: "0.5rem 1rem",
-            background: COLORS.gray,
-            borderRadius: 8,
-            fontSize: 14,
-            color: COLORS.darkBlue
-          }}>
-            <span style={{ fontWeight: 600 }}>Assigned to:</span>
-            <span>{currentNewHire.name} {currentNewHire["surname(s)"]}</span>
+          <div>
+            <h1 style={{ fontSize: 24, fontWeight: 700, color: COLORS.darkBlue, margin: 0 }}>
+              Task Details
+            </h1>
+            <p style={{ fontSize: 14, color: COLORS.textGray, margin: "4px 0 0 0" }}>
+              {currentNewHire.name} • {currentMilestone?.label}
+            </p>
           </div>
-          
-          <SignOutButton>
-            <button style={{
-              background: "#264653",
-              color: COLORS.white,
-              border: "none",
-              borderRadius: 8,
-              padding: "8px 20px",
-              fontWeight: 600,
-              fontSize: 14,
-              cursor: "pointer",
-              transition: "all 0.2s",
-              boxShadow: "0 2px 4px rgba(0,0,0,0.1)"
-            }}
-            onMouseEnter={(e) => {
-              e.currentTarget.style.transform = "translateY(-1px)";
-              e.currentTarget.style.boxShadow = "0 4px 8px rgba(0,0,0,0.15)";
-            }}
-            onMouseLeave={(e) => {
-              e.currentTarget.style.transform = "translateY(0)";
-              e.currentTarget.style.boxShadow = "0 2px 4px rgba(0,0,0,0.1)";
-            }}
-            >
-              Sign Out
-            </button>
-          </SignOutButton>
         </div>
+        <SignOutButton>
+          <button style={{
+            background: "#264653",
+            color: COLORS.white,
+            border: "none",
+            borderRadius: 8,
+            padding: "8px 20px",
+            fontWeight: 600,
+            fontSize: 14,
+            cursor: "pointer",
+            transition: "all 0.2s",
+            boxShadow: "0 2px 4px rgba(0,0,0,0.1)"
+          }}
+          onMouseEnter={(e) => {
+            e.currentTarget.style.transform = "translateY(-1px)";
+            e.currentTarget.style.boxShadow = "0 4px 8px rgba(0,0,0,0.15)";
+          }}
+          onMouseLeave={(e) => {
+            e.currentTarget.style.transform = "translateY(0)";
+            e.currentTarget.style.boxShadow = "0 2px 4px rgba(0,0,0,0.1)";
+          }}
+          >
+            Sign Out
+          </button>
+        </SignOutButton>
       </header>
 
       {/* Main Content */}
-      <main style={{ padding: "2rem", maxWidth: "1200px", margin: "0 auto" }}>
+      <div style={{ padding: "2rem", maxWidth: 1200, margin: "0 auto" }}>
         <div style={{ display: "grid", gridTemplateColumns: "2fr 1fr", gap: "2rem" }}>
-          
           {/* Left Column - Task Details */}
           <div>
-            {/* Task Header */}
+            {/* Task Information */}
             <div style={{ 
               background: COLORS.white, 
               borderRadius: 12, 
@@ -444,15 +455,9 @@ export default function TaskDetailPage() {
               boxShadow: "0 2px 8px rgba(0,0,0,0.1)"
             }}>
               <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: "1rem" }}>
-                <div>
-                  <h2 style={{ fontSize: 28, fontWeight: 700, color: COLORS.darkBlue, margin: "0 0 0.5rem 0" }}>
-                    {currentTask.name}
-                  </h2>
-                  <p style={{ fontSize: 16, color: COLORS.textGray, margin: 0, lineHeight: 1.6 }}>
-                    {currentTask.description}
-                  </p>
-                </div>
-                
+                <h2 style={{ fontSize: 20, fontWeight: 600, color: COLORS.darkBlue, margin: 0 }}>
+                  {currentTask.name}
+                </h2>
                 <select
                   value={taskStatus}
                   onChange={(e) => handleStatusChange(e.target.value)}
@@ -476,94 +481,29 @@ export default function TaskDetailPage() {
                 </select>
               </div>
               
-              <div style={{ display: "flex", gap: "2rem", fontSize: 14 }}>
-                <div>
-                  <strong style={{ color: COLORS.darkBlue }}>Due Date:</strong> <span style={{ color: COLORS.darkBlue, fontWeight: 500 }}>{formatDate(currentTask.due_date)}</span>
-                </div>
-                <div>
-                  <strong style={{ color: COLORS.darkBlue }}>Estimated Time:</strong> <span style={{ color: COLORS.darkBlue, fontWeight: 500 }}>{currentTask.estimated_hours}h</span>
-                </div>
-                <div>
-                  <strong style={{ color: COLORS.darkBlue }}>Priority:</strong> <span style={{ color: COLORS.darkBlue, fontWeight: 500 }}>{currentTask.priority}</span>
-                </div>
-                <div>
-                  <strong style={{ color: COLORS.darkBlue }}>Milestone:</strong> <span style={{ color: COLORS.darkBlue, fontWeight: 500 }}>{currentMilestone?.label}</span>
-                </div>
-              </div>
-            </div>
-
-            {/* Task Details */}
-            <div style={{ 
-              background: COLORS.white, 
-              borderRadius: 12, 
-              padding: "1.5rem",
-              marginBottom: "1.5rem",
-              boxShadow: "0 2px 8px rgba(0,0,0,0.1)"
-            }}>
-              <h3 style={{ fontSize: 20, fontWeight: 600, color: COLORS.darkBlue, margin: "0 0 1rem 0" }}>
-                Task Details
-              </h3>
-              
-              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "2rem" }}>
-                <div>
-                  <h4 style={{ fontSize: 16, fontWeight: 600, color: COLORS.darkBlue, margin: "0 0 0.5rem 0" }}>
-                    Learning Objectives
-                  </h4>
-                  <ul style={{ margin: 0, paddingLeft: "1.5rem", color: COLORS.textGray }}>
-                    {currentTask.learning_objectives?.map((objective: string, index: number) => (
-                      <li key={index} style={{ marginBottom: "0.5rem" }}>{objective}</li>
-                    ))}
-                  </ul>
-                </div>
-                
-                <div>
-                  <h4 style={{ fontSize: 16, fontWeight: 600, color: COLORS.darkBlue, margin: "0 0 0.5rem 0" }}>
-                    Success Metrics
-                  </h4>
-                  <ul style={{ margin: 0, paddingLeft: "1.5rem", color: COLORS.textGray }}>
-                    {currentTask.success_metrics?.map((metric: string, index: number) => (
-                      <li key={index} style={{ marginBottom: "0.5rem" }}>{metric}</li>
-                    ))}
-                  </ul>
-                </div>
-              </div>
-              
-              {currentTask.ai_insights && (
-                <div style={{ marginTop: "1.5rem", padding: "1rem", background: `${COLORS.teal}10`, borderRadius: 8, border: `1px solid ${COLORS.teal}30` }}>
-                  <h4 style={{ fontSize: 16, fontWeight: 600, color: COLORS.teal, margin: "0 0 0.5rem 0" }}>
-                    AI Insights
-                  </h4>
-                  <p style={{ margin: 0, color: COLORS.textGray, fontSize: 14 }}>
-                    {currentTask.ai_insights}
-                  </p>
-                </div>
+              {currentTask.description && (
+                <p style={{ fontSize: 16, color: COLORS.textGray, lineHeight: 1.6, marginBottom: "1rem" }}>
+                  {currentTask.description}
+                </p>
               )}
-            </div>
-
-            {/* Checklist */}
-            {currentTask.checklist && currentTask.checklist.length > 0 && (
-              <div style={{ 
-                background: COLORS.white, 
-                borderRadius: 12, 
-                padding: "1.5rem",
-                marginBottom: "1.5rem",
-                boxShadow: "0 2px 8px rgba(0,0,0,0.1)"
-              }}>
-                <h3 style={{ fontSize: 20, fontWeight: 600, color: COLORS.darkBlue, margin: "0 0 1rem 0" }}>
-                  Checklist
-                </h3>
-                <div style={{ display: "flex", flexDirection: "column", gap: "0.5rem" }}>
-                  {currentTask.checklist.map((item: string, index: number) => (
-                    <label key={index} style={{ display: "flex", alignItems: "center", gap: "0.5rem", cursor: "pointer" }}>
-                      <input type="checkbox" style={{ width: "18px", height: "18px" }} />
-                      <span style={{ color: COLORS.textGray }}>{item}</span>
-                    </label>
-                  ))}
+              
+              <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(200px, 1fr))", gap: "1rem" }}>
+                <div>
+                  <strong style={{ color: COLORS.darkBlue }}>Priority:</strong> <span style={{ color: COLORS.darkBlue, fontWeight: 500 }}>{currentTask.priority || 'Medium'}</span>
+                </div>
+                <div>
+                  <strong style={{ color: COLORS.darkBlue }}>Estimated Hours:</strong> <span style={{ color: COLORS.darkBlue, fontWeight: 500 }}>{currentTask.estimated_hours || 'Not specified'}</span>
+                </div>
+                <div>
+                  <strong style={{ color: COLORS.darkBlue }}>Assignee:</strong> <span style={{ color: COLORS.darkBlue, fontWeight: 500 }}>{getAssigneeDisplayName(currentTask.assignee)}</span>
+                </div>
+                <div>
+                  <strong style={{ color: COLORS.darkBlue }}>Due Date:</strong> <span style={{ color: COLORS.darkBlue, fontWeight: 500 }}>{currentTask.due_date || 'Not specified'}</span>
                 </div>
               </div>
-            )}
+            </div>
 
-            {/* Comments */}
+            {/* Comments Section */}
             <div style={{ 
               background: COLORS.white, 
               borderRadius: 12, 
@@ -672,64 +612,9 @@ export default function TaskDetailPage() {
                           )}
                         </div>
                       </div>
-                      {editingComment?.id === comment.id ? (
-                        <div>
-                          <textarea
-                            value={editingCommentText}
-                            onChange={(e) => setEditingCommentText(e.target.value)}
-                            style={{
-                              width: "100%",
-                              minHeight: "60px",
-                              padding: "0.5rem",
-                              border: `1px solid ${COLORS.borderGray}`,
-                              borderRadius: 4,
-                              fontSize: 14,
-                              resize: "vertical",
-                              color: COLORS.darkBlue,
-                              marginBottom: "0.5rem"
-                            }}
-                          />
-                          <div style={{ display: "flex", gap: 4 }}>
-                            <button
-                              onClick={handleEditComment}
-                              style={{
-                                background: COLORS.successGreen,
-                                color: COLORS.white,
-                                border: "none",
-                                borderRadius: 4,
-                                padding: "4px 8px",
-                                fontSize: 12,
-                                fontWeight: 600,
-                                cursor: "pointer"
-                              }}
-                            >
-                              Save
-                            </button>
-                            <button
-                              onClick={() => {
-                                setEditingComment(null);
-                                setEditingCommentText('');
-                              }}
-                              style={{
-                                background: COLORS.darkGray,
-                                color: COLORS.white,
-                                border: "none",
-                                borderRadius: 4,
-                                padding: "4px 8px",
-                                fontSize: 12,
-                                fontWeight: 600,
-                                cursor: "pointer"
-                              }}
-                            >
-                              Cancel
-                            </button>
-                          </div>
-                        </div>
-                      ) : (
-                        <div style={{ color: COLORS.darkBlue, fontSize: 14, lineHeight: 1.5 }}>
-                          {comment.comment_text}
-                        </div>
-                      )}
+                      <div style={{ color: COLORS.darkBlue, fontSize: 14, lineHeight: 1.5 }}>
+                        {comment.comment_text}
+                      </div>
                     </div>
                   ))}
                 </div>
@@ -771,7 +656,7 @@ export default function TaskDetailPage() {
                   + Add
                 </button>
               </div>
-                            <div style={{ display: "flex", flexDirection: "column", gap: "0.5rem" }}>
+              <div style={{ display: "flex", flexDirection: "column", gap: "0.5rem" }}>
                 {taskResources.map((resource, index) => (
                   <div key={resource.id} style={{ 
                     display: "flex", 
@@ -857,42 +742,13 @@ export default function TaskDetailPage() {
                 ))}
                 {taskResources.length === 0 && (
                   <div style={{ color: COLORS.textGray, fontSize: 14, fontStyle: "italic" }}>
-                    No resources added yet
+                    No resources attached to this task.
                   </div>
                 )}
               </div>
             </div>
 
-            {/* Tags */}
-            <div style={{ 
-              background: COLORS.white, 
-              borderRadius: 12, 
-              padding: "1.5rem",
-              marginBottom: "1.5rem",
-              boxShadow: "0 2px 8px rgba(0,0,0,0.1)"
-            }}>
-              <h3 style={{ fontSize: 18, fontWeight: 600, color: COLORS.darkBlue, margin: "0 0 1rem 0" }}>
-                Tags
-              </h3>
-              <div style={{ display: "flex", flexWrap: "wrap", gap: "0.5rem" }}>
-                {currentTask.tags?.map((tag: string, index: number) => (
-                  <span key={index} style={{ 
-                    padding: "0.25rem 0.5rem", 
-                    background: `${COLORS.teal}20`, 
-                    color: COLORS.teal,
-                    borderRadius: 4,
-                    fontSize: 12,
-                    fontWeight: 600
-                  }}>
-                    {tag}
-                  </span>
-                ))}
-              </div>
-            </div>
-
-
-
-            {/* Team Info */}
+            {/* Task Progress */}
             <div style={{ 
               background: COLORS.white, 
               borderRadius: 12, 
@@ -900,188 +756,29 @@ export default function TaskDetailPage() {
               boxShadow: "0 2px 8px rgba(0,0,0,0.1)"
             }}>
               <h3 style={{ fontSize: 18, fontWeight: 600, color: COLORS.darkBlue, margin: "0 0 1rem 0" }}>
-                Team
+                Task Progress
               </h3>
-              <div style={{ display: "flex", flexDirection: "column", gap: "1rem" }}>
-                <div>
-                  <div style={{ fontSize: 14, fontWeight: 600, color: COLORS.textGray, marginBottom: "0.25rem" }}>
-                    Manager
-                  </div>
-                  <div style={{ fontSize: 14, color: COLORS.darkBlue }}>
-                    {currentManager?.name}
-                  </div>
-                </div>
-                {currentBuddy && (
-                  <div>
-                    <div style={{ fontSize: 14, fontWeight: 600, color: COLORS.textGray, marginBottom: "0.25rem" }}>
-                      Buddy
-                    </div>
-                    <div style={{ fontSize: 14, color: COLORS.darkBlue }}>
-                      {currentBuddy.name} {currentBuddy["surname (s)"]}
-                    </div>
-                  </div>
-                )}
+              <div style={{ 
+                background: COLORS.gray, 
+                height: 8, 
+                borderRadius: 4, 
+                overflow: "hidden",
+                marginBottom: "0.5rem"
+              }}>
+                <div style={{
+                  background: getStatusColor(taskStatus),
+                  height: "100%",
+                  width: `${taskStatus === "completed" ? 100 : taskStatus === "in_progress" ? 50 : 0}%`,
+                  transition: "width 0.3s ease"
+                }} />
+              </div>
+              <div style={{ fontSize: 14, color: COLORS.textGray }}>
+                Status: {getStatusText(taskStatus)}
               </div>
             </div>
           </div>
         </div>
-      </main>
-
-      {/* Resource Form Popup */}
-      {showResourceForm && (
-        <div style={{
-          position: "fixed",
-          top: 0,
-          left: 0,
-          right: 0,
-          bottom: 0,
-          background: "rgba(0,0,0,0.5)",
-          display: "flex",
-          alignItems: "center",
-          justifyContent: "center",
-          zIndex: 1000
-        }}>
-          <div style={{
-            background: COLORS.white,
-            borderRadius: 16,
-            padding: 32,
-            maxWidth: 500,
-            width: "90%",
-            maxHeight: "90vh",
-            overflow: "auto",
-            boxShadow: "0 20px 40px rgba(0,0,0,0.3)"
-          }}>
-            <div style={{
-              display: "flex",
-              alignItems: "center",
-              justifyContent: "space-between",
-              marginBottom: 24,
-              padding: "12px 16px",
-              background: COLORS.teal,
-              borderRadius: 12,
-              color: COLORS.white
-            }}>
-              <div style={{ fontWeight: 700, fontSize: 18 }}>
-                {editingResource ? 'Edit Resource' : 'Add New Resource'}
-              </div>
-              <button
-                onClick={() => {
-                  setShowResourceForm(false);
-                  setEditingResource(null);
-                }}
-                style={{
-                  background: "none",
-                  border: "none",
-                  color: COLORS.white,
-                  fontSize: 24,
-                  cursor: "pointer",
-                  padding: 0,
-                  width: 32,
-                  height: 32,
-                  display: "flex",
-                  alignItems: "center",
-                  justifyContent: "center"
-                }}
-              >
-                ×
-              </button>
-            </div>
-
-            <div style={{ marginBottom: 16 }}>
-              <label style={{ display: "block", marginBottom: 8, fontWeight: 600, color: COLORS.darkBlue }}>
-                Resource Name
-              </label>
-              <input
-                type="text"
-                placeholder="Enter resource name..."
-                style={{
-                  width: "100%",
-                  padding: "12px",
-                  border: `1px solid ${COLORS.borderGray}`,
-                  borderRadius: 8,
-                  fontSize: 14
-                }}
-              />
-            </div>
-
-            <div style={{ marginBottom: 16 }}>
-              <label style={{ display: "block", marginBottom: 8, fontWeight: 600, color: COLORS.darkBlue }}>
-                Description (Optional)
-              </label>
-              <textarea
-                placeholder="Enter resource description..."
-                style={{
-                  width: "100%",
-                  minHeight: "80px",
-                  padding: "12px",
-                  border: `1px solid ${COLORS.borderGray}`,
-                  borderRadius: 8,
-                  fontSize: 14,
-                  resize: "vertical"
-                }}
-              />
-            </div>
-
-            <div style={{ marginBottom: 24 }}>
-              <label style={{ display: "block", marginBottom: 8, fontWeight: 600, color: COLORS.darkBlue }}>
-                URL (Optional)
-              </label>
-              <input
-                type="url"
-                placeholder="https://example.com"
-                style={{
-                  width: "100%",
-                  padding: "12px",
-                  border: `1px solid ${COLORS.borderGray}`,
-                  borderRadius: 8,
-                  fontSize: 14
-                }}
-              />
-            </div>
-
-            <div style={{ display: "flex", gap: 12, justifyContent: "flex-end" }}>
-              <button
-                onClick={() => {
-                  setShowResourceForm(false);
-                  setEditingResource(null);
-                }}
-                style={{
-                  background: COLORS.gray,
-                  color: COLORS.darkBlue,
-                  border: "none",
-                  padding: "12px 24px",
-                  borderRadius: 8,
-                  cursor: "pointer",
-                  fontSize: 14,
-                  fontWeight: 600
-                }}
-              >
-                Cancel
-              </button>
-              <button
-                onClick={() => {
-                  // TODO: Implement save functionality
-                  alert('Resource saved successfully!');
-                  setShowResourceForm(false);
-                  setEditingResource(null);
-                }}
-                style={{
-                  background: COLORS.teal,
-                  color: COLORS.white,
-                  border: "none",
-                  padding: "12px 24px",
-                  borderRadius: 8,
-                  cursor: "pointer",
-                  fontSize: 14,
-                  fontWeight: 600
-                }}
-              >
-                {editingResource ? 'Update Resource' : 'Add Resource'}
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
+      </div>
 
       {/* Resource Form Modal */}
       {showResourceForm && (
@@ -1136,6 +833,126 @@ export default function TaskDetailPage() {
               }}
               employees={newHires}
             />
+          </div>
+        </div>
+      )}
+
+      {/* Edit Comment Modal */}
+      {editingComment && (
+        <div style={{
+          position: "fixed",
+          top: 0,
+          left: 0,
+          right: 0,
+          bottom: 0,
+          background: "rgba(0,0,0,0.5)",
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "center",
+          zIndex: 1000,
+          padding: "2rem"
+        }}>
+          <div style={{
+            background: COLORS.white,
+            borderRadius: 20,
+            padding: "2rem",
+            maxWidth: 500,
+            width: "100%",
+            maxHeight: "90vh",
+            overflow: "auto",
+            boxShadow: "0 20px 60px rgba(0,0,0,0.3)"
+          }}>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "1.5rem" }}>
+              <h2 style={{ fontSize: 24, fontWeight: 700, color: COLORS.darkBlue, margin: 0 }}>
+                Edit Comment
+              </h2>
+              <button
+                onClick={() => {
+                  setEditingComment(null);
+                  setEditingCommentText('');
+                }}
+                style={{
+                  background: "none",
+                  border: "none",
+                  fontSize: 24,
+                  cursor: "pointer",
+                  color: COLORS.textGray,
+                  padding: 4
+                }}
+              >
+                ×
+              </button>
+            </div>
+
+            <form onSubmit={(e) => { e.preventDefault(); handleEditComment(); }}>
+              <div style={{ marginBottom: "1.5rem" }}>
+                <label style={{ display: "block", fontWeight: 600, color: COLORS.darkBlue, marginBottom: "0.5rem" }}>
+                  Comment
+                </label>
+                <textarea
+                  value={editingCommentText}
+                  onChange={(e) => setEditingCommentText(e.target.value)}
+                  placeholder="Edit your comment..."
+                  style={{
+                    width: "100%",
+                    minHeight: 100,
+                    padding: "12px",
+                    borderRadius: 8,
+                    border: `1px solid ${COLORS.borderGray}`,
+                    fontSize: 16,
+                    fontFamily: "inherit",
+                    resize: "vertical",
+                    background: COLORS.white,
+                    color: COLORS.darkBlue
+                  }}
+                  required
+                />
+              </div>
+
+              <div style={{ display: "flex", gap: 12, justifyContent: "flex-end" }}>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setEditingComment(null);
+                    setEditingCommentText('');
+                  }}
+                  style={{
+                    background: COLORS.lightGray,
+                    color: COLORS.darkBlue,
+                    border: "none",
+                    borderRadius: 8,
+                    padding: "12px 24px",
+                    fontWeight: 600,
+                    fontSize: 16,
+                    cursor: "pointer"
+                  }}
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  style={{
+                    background: COLORS.teal,
+                    color: COLORS.white,
+                    border: "none",
+                    borderRadius: 8,
+                    padding: "12px 24px",
+                    fontWeight: 600,
+                    fontSize: 16,
+                    cursor: "pointer",
+                    transition: "all 0.2s"
+                  }}
+                  onMouseEnter={(e) => {
+                    e.currentTarget.style.background = COLORS.darkBlue;
+                  }}
+                  onMouseLeave={(e) => {
+                    e.currentTarget.style.background = COLORS.teal;
+                  }}
+                >
+                  Update Comment
+                </button>
+              </div>
+            </form>
           </div>
         </div>
       )}
@@ -1207,7 +1024,7 @@ function ResourceForm({
       category: formData.category,
       accessible_to: formData.accessible_to as 'all' | 'specific',
       accessible_employees: formData.accessible_to === 'all' ? [] : formData.accessible_employees,
-      created_by: 'Manager'
+      created_by: 'Employee'
     };
 
     onSubmit(resourceData);

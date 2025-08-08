@@ -4,7 +4,7 @@ import Image from "next/image";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useUser, SignOutButton } from "@clerk/nextjs";
-import { fetchManagers, fetchNewHires, fetchBuddies, fetchResources, createResource, updateResource, deleteResource, type Manager, type NewHire, type Buddy, type Resource, calculateScheduledProgress, calculateActualProgress, calculateActualProgressFromTasks, getCurrentMilestoneFromTasks, calculateWorkingDaysUntilStart, calculateScheduledProgressForFuture, getStatusColor, formatDate, getInitials, fetchOnboardingPlan } from "@/lib/api";
+import { fetchManagers, fetchNewHires, fetchBuddies, fetchResources, createResource, updateResource, deleteResource, type Manager, type NewHire, type Buddy, type Resource, calculateScheduledProgress, calculateActualProgress, calculateActualProgressFromTasks, getCurrentMilestoneFromTasks, calculateWorkingDaysUntilStart, calculateScheduledProgressForFuture, getStatusColor, formatDate, getInitials, fetchOnboardingPlan, getGrowthTests, getGrowthInsights } from "@/lib/api";
 
 // Color palette and constants (reuse from dashboard/page.tsx)
 const COLORS = {
@@ -24,7 +24,7 @@ const COLORS = {
   errorRed: "#EF4444"
 };
 const NAV_TABS = {
-  manager: ["Home", "Team", "Opportunities", "Resources"],
+  manager: ["Home", "Team", "Insights", "Resources"],
 };
 const GRADIENT_BG = "linear-gradient(135deg, #2A9D8F 0%, #264653 100%)";
 const CARD_SHADOW = "0 4px 24px rgba(38,70,83,0.10)";
@@ -59,6 +59,61 @@ export default function ManagerDashboardPage() {
   const [resources, setResources] = useState<Resource[]>([]);
   const [showAddResource, setShowAddResource] = useState(false);
   const [editingResource, setEditingResource] = useState<Resource | null>(null);
+  const [collapsedCategories, setCollapsedCategories] = useState<Set<string>>(new Set());
+  
+  // Growth state
+  const [growthTests, setGrowthTests] = useState<any[]>([]);
+  const [completedTests, setCompletedTests] = useState<any[]>([]);
+  const [growthInsights, setGrowthInsights] = useState<any[]>([]);
+  const [additionalInsights, setAdditionalInsights] = useState<any[]>([]);
+  const [selectedEmployee, setSelectedEmployee] = useState<NewHire | null>(null);
+  const [activeGrowthCategory, setActiveGrowthCategory] = useState<'self-awareness' | 'goal-setting' | 'skill-building'>('self-awareness');
+  
+  // Goal and Skill management state
+  const [goals, setGoals] = useState<Array<{
+    id: number;
+    title: string;
+    description: string;
+    timeframe: 'short-term' | 'medium-term' | 'long-term';
+    priority: 'low' | 'medium' | 'high';
+    progress: number;
+    created_at: string;
+    comments: Array<{
+      id: number;
+      text: string;
+      author: string;
+      created_at: string;
+    }>;
+  }>>([]);
+
+  const [skills, setSkills] = useState<Array<{
+    id: number;
+    name: string;
+    description: string;
+    priority: 'low' | 'medium' | 'high';
+    targetDate: string;
+    status: 'not-started' | 'in-progress' | 'completed';
+    progress: number;
+    created_at: string;
+    comments: Array<{
+      id: number;
+      text: string;
+      author: string;
+      created_at: string;
+    }>;
+  }>>([]);
+
+  // Comment editing state
+  const [editingGoalComment, setEditingGoalComment] = useState<{goalId: number, commentId: number} | null>(null);
+  const [editingSkillComment, setEditingSkillComment] = useState<{skillId: number, commentId: number} | null>(null);
+  const [editingGoalCommentText, setEditingGoalCommentText] = useState('');
+  const [editingSkillCommentText, setEditingSkillCommentText] = useState('');
+  const [newGoalComment, setNewGoalComment] = useState('');
+  const [newSkillComment, setNewSkillComment] = useState('');
+  const [showGoalComments, setShowGoalComments] = useState<number | null>(null);
+  const [showSkillComments, setShowSkillComments] = useState<number | null>(null);
+  
+
   
 
   
@@ -448,6 +503,267 @@ ${currentManager?.name}`;
     return `${employeeCount} employee${employeeCount !== 1 ? 's' : ''}: ${employeeNames}`;
   };
 
+  const toggleCategoryCollapse = (category: string) => {
+    setCollapsedCategories(prev => {
+      const newSet = new Set(prev);
+      if (newSet.has(category)) {
+        newSet.delete(category);
+      } else {
+        newSet.add(category);
+      }
+      return newSet;
+    });
+  };
+
+  // Growth-related functions
+  const fetchGrowthData = async (employeeId: number) => {
+    try {
+      const testsData = await getGrowthTests(employeeId);
+      const insightsData = await getGrowthInsights(employeeId);
+
+      setGrowthTests(testsData.tests || []);
+      setCompletedTests(testsData.completedTests || []);
+      setGrowthInsights(insightsData.insights || []);
+      setAdditionalInsights(insightsData.additionalInsights || []);
+      
+      // For now, we'll use sample data for goals and skills
+      // In a real implementation, these would be fetched from the database
+      setGoals([
+        {
+          id: 1,
+          title: "Improve public speaking skills",
+          description: "Become more confident in presenting to large groups",
+          timeframe: "medium-term",
+          priority: "high",
+          progress: 60,
+          created_at: "2024-01-15",
+          comments: [
+            {
+              id: 1,
+              text: "Started attending Toastmasters meetings weekly",
+              author: "Employee",
+              created_at: "2024-01-20"
+            },
+            {
+              id: 2,
+              text: "Great initiative! Consider also joining the internal presentation skills workshop",
+              author: "Manager",
+              created_at: "2024-01-22"
+            }
+          ]
+        },
+        {
+          id: 2,
+          title: "Learn advanced data analysis",
+          description: "Master Excel and SQL for better reporting",
+          timeframe: "long-term",
+          priority: "medium",
+          progress: 25,
+          created_at: "2024-01-10",
+          comments: [
+            {
+              id: 3,
+              text: "Enrolled in online SQL course",
+              author: "Employee",
+              created_at: "2024-01-18"
+            }
+          ]
+        }
+      ]);
+
+      setSkills([
+        {
+          id: 1,
+          name: "Project Management",
+          description: "Learn to manage multiple projects effectively",
+          priority: "high",
+          targetDate: "2024-06-30",
+          status: "in-progress",
+          progress: 75,
+          created_at: "2024-01-12",
+          comments: [
+            {
+              id: 1,
+              text: "Completed PMP certification course",
+              author: "Employee",
+              created_at: "2024-01-25"
+            },
+            {
+              id: 2,
+              text: "Excellent progress! Ready to lead the Q2 project",
+              author: "Manager",
+              created_at: "2024-01-26"
+            }
+          ]
+        },
+        {
+          id: 2,
+          name: "Advanced Excel",
+          description: "Master pivot tables, VLOOKUP, and data visualization",
+          priority: "medium",
+          targetDate: "2024-04-15",
+          status: "not-started",
+          progress: 0,
+          created_at: "2024-01-08",
+          comments: []
+        }
+      ]);
+    } catch (error) {
+      console.error('Error fetching growth data:', error);
+    }
+  };
+
+  const handleEmployeeSelect = (employee: NewHire) => {
+    setSelectedEmployee(employee);
+    fetchGrowthData(employee.id);
+  };
+
+  const getInsightIcon = (type: string) => {
+    switch (type) {
+      case 'personality': return '🧠';
+      case 'leadership': return '👑';
+      case 'communication': return '💬';
+      case 'development': return '📈';
+      case 'strengths': return '💪';
+      default: return '💡';
+    }
+  };
+
+  const getInsightColor = (type: string) => {
+    switch (type) {
+      case 'personality': return COLORS.teal;
+      case 'leadership': return COLORS.yellow;
+      case 'communication': return COLORS.orange;
+      case 'development': return COLORS.darkBlue;
+      case 'strengths': return COLORS.successGreen;
+      default: return COLORS.gray;
+    }
+  };
+
+  // Goal and Skill management functions
+  const getPriorityColor = (priority: string) => {
+    switch (priority) {
+      case 'high': return COLORS.errorRed;
+      case 'medium': return COLORS.warningAmber;
+      case 'low': return COLORS.successGreen;
+      default: return COLORS.textGray;
+    }
+  };
+
+  const getTimeframeColor = (timeframe: string) => {
+    switch (timeframe) {
+      case 'short-term': return COLORS.successGreen;
+      case 'medium-term': return COLORS.warningAmber;
+      case 'long-term': return COLORS.errorRed;
+      default: return COLORS.textGray;
+    }
+  };
+
+  // Comment management functions
+  const handleAddGoalComment = (goalId: number) => {
+    if (newGoalComment.trim()) {
+      const comment = {
+        id: Date.now(),
+        text: newGoalComment,
+        author: currentManager?.name || "Manager",
+        created_at: new Date().toISOString().split('T')[0]
+      };
+      setGoals(prev => prev.map(goal => 
+        goal.id === goalId 
+          ? { ...goal, comments: [...goal.comments, comment] }
+          : goal
+      ));
+      setNewGoalComment('');
+    }
+  };
+
+  const handleAddSkillComment = (skillId: number) => {
+    if (newSkillComment.trim()) {
+      const comment = {
+        id: Date.now(),
+        text: newSkillComment,
+        author: currentManager?.name || "Manager",
+        created_at: new Date().toISOString().split('T')[0]
+      };
+      setSkills(prev => prev.map(skill => 
+        skill.id === skillId 
+          ? { ...skill, comments: [...skill.comments, comment] }
+          : skill
+      ));
+      setNewSkillComment('');
+    }
+  };
+
+  const startEditGoalComment = (goalId: number, commentId: number, commentText: string) => {
+    setEditingGoalComment({ goalId, commentId });
+    setEditingGoalCommentText(commentText);
+  };
+
+  const startEditSkillComment = (skillId: number, commentId: number, commentText: string) => {
+    setEditingSkillComment({ skillId, commentId });
+    setEditingSkillCommentText(commentText);
+  };
+
+  const handleEditGoalComment = () => {
+    if (editingGoalComment && editingGoalCommentText.trim()) {
+      setGoals(prev => prev.map(goal => 
+        goal.id === editingGoalComment.goalId 
+          ? { 
+              ...goal, 
+              comments: goal.comments.map(comment => 
+                comment.id === editingGoalComment.commentId 
+                  ? { ...comment, text: editingGoalCommentText.trim() }
+                  : comment
+              )
+            }
+          : goal
+      ));
+      setEditingGoalComment(null);
+      setEditingGoalCommentText('');
+    }
+  };
+
+  const handleEditSkillComment = () => {
+    if (editingSkillComment && editingSkillCommentText.trim()) {
+      setSkills(prev => prev.map(skill => 
+        skill.id === editingSkillComment.skillId 
+          ? { 
+              ...skill, 
+              comments: skill.comments.map(comment => 
+                comment.id === editingSkillComment.commentId 
+                  ? { ...comment, text: editingSkillCommentText.trim() }
+                  : comment
+              )
+            }
+          : skill
+      ));
+      setEditingSkillComment(null);
+      setEditingSkillCommentText('');
+    }
+  };
+
+  const handleDeleteGoalComment = (goalId: number, commentId: number) => {
+    if (!confirm('Are you sure you want to delete this comment?')) return;
+    
+    setGoals(prev => prev.map(goal => 
+      goal.id === goalId 
+        ? { ...goal, comments: goal.comments.filter(comment => comment.id !== commentId) }
+        : goal
+    ));
+  };
+
+  const handleDeleteSkillComment = (skillId: number, commentId: number) => {
+    if (!confirm('Are you sure you want to delete this comment?')) return;
+    
+    setSkills(prev => prev.map(skill => 
+      skill.id === skillId 
+        ? { ...skill, comments: skill.comments.filter(comment => comment.id !== commentId) }
+        : skill
+    ));
+  };
+
+
+
   // Calculate dashboard metrics from real data (filtered for current manager)
   const totalNewHires = managerNewHires.length;
   const overdueItems = managerNewHires.filter(hire => hire.calculated_status === 'overdue').length;
@@ -464,19 +780,24 @@ ${currentManager?.name}`;
     { title: "# New Hires", value: totalNewHires, color: COLORS.teal },
     { title: "# Onboarding", value: actionsPending, color: COLORS.orange },
     { title: "# Completed", value: completedItems, color: COLORS.teal },
-    { title: "# Pending Actions", value: pendingActionsCount, color: COLORS.red, onClick: () => {
-      // Scroll to Team Updates section with proper offset
-      const teamUpdatesSection = document.getElementById('team-updates-section');
-      if (teamUpdatesSection) {
-        const offset = 100; // Add offset to account for header
-        const elementPosition = teamUpdatesSection.getBoundingClientRect().top;
-        const offsetPosition = elementPosition + window.pageYOffset - offset;
-        window.scrollTo({
-          top: offsetPosition,
-          behavior: 'smooth'
-        });
+    { 
+      title: "# Pending Actions", 
+      value: pendingActionsCount, 
+      color: COLORS.red, 
+      onClick: () => {
+        // Scroll to Team Updates section with proper offset
+        const teamUpdatesSection = document.getElementById('team-updates-section');
+        if (teamUpdatesSection) {
+          const offset = 100; // Add offset to account for header
+          const elementPosition = teamUpdatesSection.getBoundingClientRect().top;
+          const offsetPosition = elementPosition + window.pageYOffset - offset;
+          window.scrollTo({
+            top: offsetPosition,
+            behavior: 'smooth'
+          });
+        }
       }
-    }},
+    }
   ];
 
   if (!isLoaded || loading) {
@@ -613,79 +934,62 @@ ${currentManager?.name}`;
               gap: "0.75rem"
             }}
           >
-          <Link href="/app/add-new-hire" style={{ textDecoration: 'none' }}>
-            <button
-              style={{
-                background: COLORS.darkBlue,
-                color: COLORS.white,
-                border: "none",
-                borderRadius: 10,
-                padding: "8px 20px",
-                fontWeight: 600,
-                fontSize: 14,
-                cursor: "pointer",
-                transition: "all 0.2s",
-                boxShadow: "0 4px 12px rgba(38,70,83,0.2)",
-                display: "flex",
-                alignItems: "center",
-                gap: "6px"
-              }}
-              onMouseEnter={(e) => {
-                e.currentTarget.style.transform = "translateY(-2px)";
-                e.currentTarget.style.boxShadow = "0 6px 16px rgba(38,70,83,0.3)";
-              }}
-              onMouseLeave={(e) => {
-                e.currentTarget.style.transform = "translateY(0)";
-                e.currentTarget.style.boxShadow = "0 4px 12px rgba(38,70,83,0.2)";
-              }}
-            >
-              Add New Hire
-            </button>
-          </Link>
-          <SignOutButton>
-            <button
-              style={{
-                background: COLORS.darkBlue,
-                color: COLORS.white,
-                border: "none",
-                borderRadius: 10,
-                padding: "8px 20px",
-                fontWeight: 600,
-                fontSize: 14,
-                cursor: "pointer",
-                transition: "all 0.2s",
-                boxShadow: "0 4px 12px rgba(38,70,83,0.2)"
-              }}
-              onMouseEnter={(e) => {
-                e.currentTarget.style.transform = "translateY(-2px)";
-                e.currentTarget.style.boxShadow = "0 6px 16px rgba(38,70,83,0.3)";
-              }}
-              onMouseLeave={(e) => {
-                e.currentTarget.style.transform = "translateY(0)";
-                e.currentTarget.style.boxShadow = "0 4px 12px rgba(38,70,83,0.2)";
-              }}
-            >
-              Sign Out
-            </button>
-          </SignOutButton>
+            <Link href="/app/add-new-hire" style={{ textDecoration: 'none' }}>
+              <button
+                style={{
+                  background: COLORS.darkBlue,
+                  color: COLORS.white,
+                  border: "none",
+                  borderRadius: 10,
+                  padding: "8px 20px",
+                  fontWeight: 600,
+                  fontSize: 14,
+                  cursor: "pointer",
+                  transition: "all 0.2s",
+                  boxShadow: "0 4px 12px rgba(38,70,83,0.2)",
+                  display: "flex",
+                  alignItems: "center",
+                  gap: "6px"
+                }}
+                onMouseEnter={(e) => {
+                  e.currentTarget.style.transform = "translateY(-2px)";
+                  e.currentTarget.style.boxShadow = "0 6px 16px rgba(38,70,83,0.3)";
+                }}
+                onMouseLeave={(e) => {
+                  e.currentTarget.style.transform = "translateY(0)";
+                  e.currentTarget.style.boxShadow = "0 4px 12px rgba(38,70,83,0.2)";
+                }}
+              >
+                Add New Hire
+              </button>
+            </Link>
+            <SignOutButton>
+              <button
+                style={{
+                  background: "#264653",
+                  color: COLORS.white,
+                  border: "none",
+                  borderRadius: 8,
+                  padding: "8px 20px",
+                  fontWeight: 600,
+                  fontSize: 14,
+                  cursor: "pointer",
+                  transition: "all 0.2s",
+                  boxShadow: "0 2px 4px rgba(0,0,0,0.1)"
+                }}
+                onMouseEnter={(e) => {
+                  e.currentTarget.style.transform = "translateY(-1px)";
+                  e.currentTarget.style.boxShadow = "0 4px 8px rgba(0,0,0,0.15)";
+                }}
+                onMouseLeave={(e) => {
+                  e.currentTarget.style.transform = "translateY(0)";
+                  e.currentTarget.style.boxShadow = "0 2px 4px rgba(0,0,0,0.1)";
+                }}
+              >
+                Sign Out
+              </button>
+            </SignOutButton>
           </div>
-          <span
-            style={{
-              background: COLORS.teal,
-              color: COLORS.white,
-              borderRadius: "50%",
-              width: 48,
-              height: 48,
-              display: "flex",
-              alignItems: "center",
-              justifyContent: "center",
-              fontWeight: 700,
-              fontSize: 24,
-              boxShadow: "0 2px 8px rgba(42,157,143,0.18)",
-            }}
-          >
-            {currentManager?.name?.charAt(0) || 'M'}
-          </span>
         </div>
       </nav>
 
@@ -702,7 +1006,7 @@ ${currentManager?.name}`;
             marginBottom: 40,
             display: "flex",
             flexDirection: "column",
-            gap: "2.5rem",
+            gap: activeTab === "Resources" ? "1.5rem" : "2.5rem",
           }}
         >
           <h2
@@ -710,17 +1014,31 @@ ${currentManager?.name}`;
               fontSize: 28,
               fontWeight: 700,
               color: COLORS.darkBlue,
-              marginBottom: 12,
+              marginBottom: activeTab === "Resources" ? 4 : 12,
             }}
           >
             {activeTab === "Home" && currentManager ? (
               <>
                 Hello, {currentManager.name}! 👋
               </>
+            ) : activeTab === "Resources" ? (
+              "Resources Library"
             ) : (
               `${activeTab} Overview`
             )}
           </h2>
+          
+          {activeTab === "Resources" && (
+            <p style={{ 
+              fontSize: 16, 
+              color: COLORS.textGray, 
+              marginBottom: 24,
+              marginTop: 0,
+              lineHeight: 1.4
+            }}>
+              Manage and share resources with your team members during their onboarding journey
+            </p>
+          )}
           
           {/* Home Tab Content */}
           {activeTab === "Home" && (
@@ -865,6 +1183,24 @@ ${currentManager?.name}`;
                       e.currentTarget.style.transform = "translateY(0)";
                       e.currentTarget.style.boxShadow = "0 4px 12px rgba(38,70,83,0.2)";
                     }}
+                    onClick={() => {
+                      // Filter to show only overdue team members
+                      const overdueTeamMembers = managerNewHires.filter(hire => {
+                        const actual = onboardingPlans[hire.id] ? calculateActualProgressFromTasks(onboardingPlans[hire.id]) : calculateActualProgress(hire.current_milestone, hire.calculated_status);
+                        const scheduled = new Date(hire.start_date) > new Date() ? calculateScheduledProgressForFuture(hire.start_date) : calculateScheduledProgress(hire.workdays_since_start);
+                        return actual < scheduled && new Date(hire.start_date) <= new Date();
+                      });
+                      
+                      if (overdueTeamMembers.length === 0) {
+                        alert('No overdue team members found!');
+                        return;
+                      }
+                      
+                      // Navigate to team tab with overdue filter
+                      setActiveTab("Team");
+                      // You could add a filter state here to highlight overdue members
+                      alert(`Found ${overdueTeamMembers.length} overdue team member(s). Check the Team tab for details.`);
+                    }}
                     >
                       Review Overdue ({overdueItems})
                     </button>
@@ -953,7 +1289,7 @@ ${currentManager?.name}`;
                     color: COLORS.white
                   }}>
                     <div style={{ fontWeight: 700, fontSize: 16 }}>Quick Insights</div>
-                    <Link href="/app/dashboard/manager/ai-insights" style={{
+                    <button onClick={() => setActiveTab("Insights")} style={{
                       background: "rgba(255,255,255,0.2)",
                       color: COLORS.white,
                       border: "none",
@@ -965,10 +1301,17 @@ ${currentManager?.name}`;
                       textDecoration: "none",
                       transition: "all 0.2s"
                     }}>
-                      Get AI Insights
-                    </Link>
+                      More Insights
+                    </button>
                   </div>
-                  <div style={{ display: "flex", flexDirection: "column", gap: "0.75rem" }}>
+                  <div style={{ 
+                    display: "flex", 
+                    flexDirection: "column", 
+                    gap: "0.75rem",
+                    maxHeight: "400px",
+                    overflowY: "auto",
+                    paddingRight: "8px"
+                  }}>
                     <div style={{ 
                       padding: "0.75rem", 
                       background: `${COLORS.teal}10`, 
@@ -982,19 +1325,7 @@ ${currentManager?.name}`;
                         {managerNewHires.length} team members • {managerNewHires.filter(hire => hire.calculated_status === 'in_progress').length} in progress • {managerNewHires.filter(hire => hire.calculated_status === 'not_started').length} not started
                       </div>
                     </div>
-                    <div style={{ 
-                      padding: "0.75rem", 
-                      background: `${COLORS.orange}10`, 
-                      borderRadius: 8,
-                      borderLeft: `3px solid ${COLORS.orange}`
-                    }}>
-                      <div style={{ fontWeight: 600, color: COLORS.darkBlue, marginBottom: "0.25rem" }}>
-                        Action Items
-                      </div>
-                      <div style={{ fontSize: 13, color: COLORS.textGray }}>
-                        {managerNewHires.filter(hire => !hire.buddy_id).length > 0 ? `${managerNewHires.filter(hire => !hire.buddy_id).length} team member(s) need buddy assignment` : 'All team members have buddies assigned'}
-                      </div>
-                    </div>
+
                     <div style={{ 
                       padding: "0.75rem", 
                       background: `${COLORS.successGreen}10`, 
@@ -1006,6 +1337,48 @@ ${currentManager?.name}`;
                       </div>
                       <div style={{ fontSize: 13, color: COLORS.textGray }}>
                         Review onboarding progress and schedule 1:1 meetings with new team members
+                      </div>
+                    </div>
+
+                    <div style={{ 
+                      padding: "0.75rem", 
+                      background: `${COLORS.warningAmber}10`, 
+                      borderRadius: 8,
+                      borderLeft: `3px solid ${COLORS.warningAmber}`
+                    }}>
+                      <div style={{ fontWeight: 600, color: COLORS.darkBlue, marginBottom: "0.25rem" }}>
+                        Performance Insights
+                      </div>
+                      <div style={{ fontSize: 13, color: COLORS.textGray }}>
+                        {managerNewHires.filter(hire => hire.calculated_status === 'completed').length} team members have completed their onboarding
+                      </div>
+                    </div>
+
+                    <div style={{ 
+                      padding: "0.75rem", 
+                      background: `${COLORS.errorRed}10`, 
+                      borderRadius: 8,
+                      borderLeft: `3px solid ${COLORS.errorRed}`
+                    }}>
+                      <div style={{ fontWeight: 600, color: COLORS.darkBlue, marginBottom: "0.25rem" }}>
+                        Attention Needed
+                      </div>
+                      <div style={{ fontSize: 13, color: COLORS.textGray }}>
+                        {managerNewHires.filter(hire => !hire.buddy_id).length} team members need buddy assignments
+                      </div>
+                    </div>
+
+                    <div style={{ 
+                      padding: "0.75rem", 
+                      background: `${COLORS.orange}10`, 
+                      borderRadius: 8,
+                      borderLeft: `3px solid ${COLORS.orange}`
+                    }}>
+                      <div style={{ fontWeight: 600, color: COLORS.darkBlue, marginBottom: "0.25rem" }}>
+                        Resource Usage
+                      </div>
+                      <div style={{ fontSize: 13, color: COLORS.textGray }}>
+                        {resources.length} resources available for team onboarding
                       </div>
                     </div>
                   </div>
@@ -1087,7 +1460,14 @@ ${currentManager?.name}`;
                   }}>
                     <div style={{ fontWeight: 700, fontSize: 16 }}>Team Updates</div>
                   </div>
-                  <div style={{ color: COLORS.darkBlue, fontSize: 14, lineHeight: 1.6 }}>
+                  <div style={{ 
+                    color: COLORS.darkBlue, 
+                    fontSize: 14, 
+                    lineHeight: 1.6,
+                    maxHeight: "400px",
+                    overflowY: "auto",
+                    paddingRight: "8px"
+                  }}>
                     {(() => {
                       const updates = generateTeamUpdates();
                       
@@ -1122,7 +1502,7 @@ ${currentManager?.name}`;
                       
                       return (
                         <div style={{ fontSize: 14, lineHeight: 1.6 }}>
-                          {updates.map((update, index) => {
+                          {updates.slice(0, 4).map((update, index) => {
                             const getPriorityColor = (priority: string) => {
                               switch (priority) {
                                 case 'critical': return COLORS.errorRed;
@@ -1145,7 +1525,7 @@ ${currentManager?.name}`;
                               <div 
                                 key={update.id}
                                 style={{ 
-                                  marginBottom: index < updates.length - 1 ? 12 : 0, 
+                                  marginBottom: index < Math.min(updates.length, 4) - 1 ? 12 : 0, 
                                   padding: '12px 16px', 
                                   borderRadius: 8, 
                                   background: getPriorityBackground(update.priority), 
@@ -1768,6 +2148,7 @@ ${currentManager?.name}`;
                             View Plan
                           </button>
                         </Link>
+
                       </div>
                     </div>
                   ))}
@@ -1776,10 +2157,10 @@ ${currentManager?.name}`;
             </div>
           )}
 
-          {/* Opportunities Tab Content */}
-          {activeTab === "Opportunities" && (
+          {/* Insights Tab Content */}
+          {activeTab === "Insights" && (
             <div style={{ display: "flex", flexDirection: "column", gap: "2.5rem" }}>
-              {/* Growth Opportunities Section */}
+              {/* Team Performance Insights */}
               <div style={{ 
                 background: COLORS.lightGray, 
                 borderRadius: 16, 
@@ -1797,105 +2178,1209 @@ ${currentManager?.name}`;
                   color: COLORS.white
                 }}>
                   <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
-                    <div style={{ fontWeight: 700, fontSize: 16 }}>Growth Opportunities</div>
+                    <div style={{ fontWeight: 700, fontSize: 16 }}>Team Performance Insights</div>
                   </div>
-                  <button style={{
-                    background: "rgba(255,255,255,0.3)",
-                    color: COLORS.white,
-                    border: "none",
-                    borderRadius: 8,
-                    padding: "8px 16px",
-                    fontWeight: 600,
-                    cursor: "pointer",
-                    fontSize: 14,
-                    transition: "all 0.2s"
-                  }}>
-                    Create New
-                  </button>
+                  <div style={{ fontSize: 12, opacity: 0.9 }}>AI-Powered Analysis</div>
                 </div>
-                <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(250px, 1fr))", gap: "1rem" }}>
-                  <button style={{
+                
+                <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(300px, 1fr))", gap: "1.5rem" }}>
+                  {/* Onboarding Progress Analysis */}
+                  <div style={{
                     background: COLORS.white,
-                    color: COLORS.darkBlue,
+                    borderRadius: 12,
+                    padding: 20,
                     border: `1px solid ${COLORS.borderGray}`,
-                    borderRadius: 10,
-                    padding: "16px",
-                    fontWeight: 600,
-                    cursor: "pointer",
-                    fontSize: 14,
-                    transition: "all 0.2s",
-                    textAlign: "left",
-                    display: "flex",
-                    alignItems: "center",
-                    gap: "12px"
+                    boxShadow: "0 2px 8px rgba(0,0,0,0.05)"
                   }}>
-                    <div>
-                      <div style={{ fontWeight: 700, marginBottom: 4 }}>Leadership Training</div>
-                      <div style={{ fontSize: 12, opacity: 0.7 }}>3 team members eligible</div>
+                    <div style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 16 }}>
+                      <div style={{ 
+                        width: 40, 
+                        height: 40, 
+                        background: `${COLORS.teal}20`, 
+                        borderRadius: 8,
+                        display: "flex",
+                        alignItems: "center",
+                        justifyContent: "center"
+                      }}>
+                        📊
+                      </div>
+                      <div>
+                        <div style={{ fontWeight: 700, color: COLORS.darkBlue, fontSize: 16 }}>Onboarding Progress</div>
+                        <div style={{ fontSize: 12, color: COLORS.textGray }}>Team average: 68%</div>
+                      </div>
                     </div>
-                  </button>
-                  <button style={{
+                    <div style={{ fontSize: 14, color: COLORS.darkBlue, lineHeight: 1.5 }}>
+                      <strong>Key Finding:</strong> Your team is performing 12% above the company average. 
+                      <span style={{ color: COLORS.successGreen, fontWeight: 600 }}> Sarah Chen</span> leads with 89% completion.
+                    </div>
+                  </div>
+
+                  {/* Risk Assessment */}
+                  <div style={{
                     background: COLORS.white,
-                    color: COLORS.darkBlue,
+                    borderRadius: 12,
+                    padding: 20,
                     border: `1px solid ${COLORS.borderGray}`,
-                    borderRadius: 10,
-                    padding: "16px",
-                    fontWeight: 600,
-                    cursor: "pointer",
-                    fontSize: 14,
-                    transition: "all 0.2s",
-                    textAlign: "left",
-                    display: "flex",
-                    alignItems: "center",
-                    gap: "12px"
+                    boxShadow: "0 2px 8px rgba(0,0,0,0.05)"
                   }}>
-                    <div>
-                      <div style={{ fontWeight: 700, marginBottom: 4 }}>Mentorship Programme</div>
-                      <div style={{ fontSize: 12, opacity: 0.7 }}>2 new mentors needed</div>
+                    <div style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 16 }}>
+                      <div style={{ 
+                        width: 40, 
+                        height: 40, 
+                        background: `${COLORS.warningAmber}20`, 
+                        borderRadius: 8,
+                        display: "flex",
+                        alignItems: "center",
+                        justifyContent: "center"
+                      }}>
+                        ⚠️
+                      </div>
+                      <div>
+                        <div style={{ fontWeight: 700, color: COLORS.darkBlue, fontSize: 16 }}>Risk Assessment</div>
+                        <div style={{ fontSize: 12, color: COLORS.textGray }}>2 team members at risk</div>
+                      </div>
                     </div>
-                  </button>
-                  <button style={{
+                    <div style={{ fontSize: 14, color: COLORS.darkBlue, lineHeight: 1.5 }}>
+                      <strong>Attention Needed:</strong> <span style={{ color: COLORS.errorRed, fontWeight: 600 }}>Michael Rodriguez</span> is 15 days behind schedule. 
+                      Consider additional support or timeline adjustment.
+                    </div>
+                  </div>
+
+                  {/* Engagement Patterns */}
+                  <div style={{
                     background: COLORS.white,
-                    color: COLORS.darkBlue,
+                    borderRadius: 12,
+                    padding: 20,
                     border: `1px solid ${COLORS.borderGray}`,
-                    borderRadius: 10,
-                    padding: "16px",
-                    fontWeight: 600,
-                    cursor: "pointer",
-                    fontSize: 14,
-                    transition: "all 0.2s",
-                    textAlign: "left",
-                    display: "flex",
-                    alignItems: "center",
-                    gap: "12px"
+                    boxShadow: "0 2px 8px rgba(0,0,0,0.05)"
                   }}>
-                    <div>
-                      <div style={{ fontWeight: 700, marginBottom: 4 }}>Mentorship Programme</div>
-                      <div style={{ fontSize: 12, opacity: 0.7 }}>2 new mentors needed</div>
+                    <div style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 16 }}>
+                      <div style={{ 
+                        width: 40, 
+                        height: 40, 
+                        background: `${COLORS.successGreen}20`, 
+                        borderRadius: 8,
+                        display: "flex",
+                        alignItems: "center",
+                        justifyContent: "center"
+                      }}>
+                        🎯
+                      </div>
+                      <div>
+                        <div style={{ fontWeight: 700, color: COLORS.darkBlue, fontSize: 16 }}>Engagement Patterns</div>
+                        <div style={{ fontSize: 12, color: COLORS.textGray }}>High activity detected</div>
+                      </div>
                     </div>
-                  </button>
+                    <div style={{ fontSize: 14, color: COLORS.darkBlue, lineHeight: 1.5 }}>
+                      <strong>Positive Trend:</strong> Team engagement is 23% higher than last quarter. 
+                      <span style={{ color: COLORS.successGreen, fontWeight: 600 }}>Emma Thompson</span> shows exceptional initiative.
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              {/* Predictive Analytics */}
+              <div style={{ 
+                background: COLORS.lightGray, 
+                borderRadius: 16, 
+                border: `1px solid ${COLORS.borderGray}`,
+                padding: 24 
+              }}>
+                <div style={{ 
+                  display: "flex", 
+                  alignItems: "center", 
+                  justifyContent: "space-between", 
+                  marginBottom: 20,
+                  padding: "12px 16px",
+                  background: COLORS.teal,
+                  borderRadius: 12,
+                  color: COLORS.white
+                }}>
+                  <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+                    <div style={{ fontWeight: 700, fontSize: 16 }}>Predictive Analytics</div>
+                  </div>
+                  <div style={{ fontSize: 12, opacity: 0.9 }}>AI Forecast</div>
+                </div>
+                
+                <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(280px, 1fr))", gap: "1.5rem" }}>
+                  {/* Completion Timeline */}
+                  <div style={{
+                    background: COLORS.white,
+                    borderRadius: 12,
+                    padding: 20,
+                    border: `1px solid ${COLORS.borderGray}`,
+                    boxShadow: "0 2px 8px rgba(0,0,0,0.05)"
+                  }}>
+                    <div style={{ fontWeight: 700, color: COLORS.darkBlue, marginBottom: 12 }}>Expected Completion Timeline</div>
+                    <div style={{ fontSize: 14, color: COLORS.darkBlue, lineHeight: 1.6 }}>
+                      <div style={{ marginBottom: 8 }}>
+                        <span style={{ fontWeight: 600 }}>Sarah Chen:</span> <span style={{ color: COLORS.successGreen }}>2 weeks ahead</span>
+                      </div>
+                      <div style={{ marginBottom: 8 }}>
+                        <span style={{ fontWeight: 600 }}>Emma Thompson:</span> <span style={{ color: COLORS.successGreen }}>On track</span>
+                      </div>
+                      <div style={{ marginBottom: 8 }}>
+                        <span style={{ fontWeight: 600 }}>Michael Rodriguez:</span> <span style={{ color: COLORS.errorRed }}>3 weeks behind</span>
+                      </div>
+                      <div style={{ marginBottom: 8 }}>
+                        <span style={{ fontWeight: 600 }}>David Kim:</span> <span style={{ color: COLORS.warningAmber }}>1 week behind</span>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Resource Recommendations */}
+                  <div style={{
+                    background: COLORS.white,
+                    borderRadius: 12,
+                    padding: 20,
+                    border: `1px solid ${COLORS.borderGray}`,
+                    boxShadow: "0 2px 8px rgba(0,0,0,0.05)"
+                  }}>
+                    <div style={{ fontWeight: 700, color: COLORS.darkBlue, marginBottom: 12 }}>Resource Recommendations</div>
+                    <div style={{ fontSize: 14, color: COLORS.darkBlue, lineHeight: 1.6 }}>
+                      <div style={{ marginBottom: 8 }}>
+                        <span style={{ fontWeight: 600 }}>High Priority:</span> Additional training for Michael Rodriguez
+                      </div>
+                      <div style={{ marginBottom: 8 }}>
+                        <span style={{ fontWeight: 600 }}>Medium Priority:</span> Mentorship pairing for David Kim
+                      </div>
+                      <div style={{ marginBottom: 8 }}>
+                        <span style={{ fontWeight: 600 }}>Low Priority:</span> Advanced resources for Sarah Chen
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Team Dynamics */}
+                  <div style={{
+                    background: COLORS.white,
+                    borderRadius: 12,
+                    padding: 20,
+                    border: `1px solid ${COLORS.borderGray}`,
+                    boxShadow: "0 2px 8px rgba(0,0,0,0.05)"
+                  }}>
+                    <div style={{ fontWeight: 700, color: COLORS.darkBlue, marginBottom: 12 }}>Team Dynamics Analysis</div>
+                    <div style={{ fontSize: 14, color: COLORS.darkBlue, lineHeight: 1.6 }}>
+                      <div style={{ marginBottom: 8 }}>
+                        <span style={{ fontWeight: 600 }}>Collaboration Score:</span> <span style={{ color: COLORS.successGreen }}>8.5/10</span>
+                      </div>
+                      <div style={{ marginBottom: 8 }}>
+                        <span style={{ fontWeight: 600 }}>Communication:</span> <span style={{ color: COLORS.successGreen }}>Excellent</span>
+                      </div>
+                      <div style={{ marginBottom: 8 }}>
+                        <span style={{ fontWeight: 600 }}>Peer Support:</span> <span style={{ color: COLORS.warningAmber }}>Needs improvement</span>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              {/* Actionable Recommendations */}
+              <div style={{ 
+                background: COLORS.lightGray, 
+                borderRadius: 16, 
+                border: `1px solid ${COLORS.borderGray}`,
+                padding: 24 
+              }}>
+                <div style={{ 
+                  display: "flex", 
+                  alignItems: "center", 
+                  justifyContent: "space-between", 
+                  marginBottom: 20,
+                  padding: "12px 16px",
+                  background: COLORS.orange,
+                  borderRadius: 12,
+                  color: COLORS.white
+                }}>
+                  <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+                    <div style={{ fontWeight: 700, fontSize: 16 }}>Actionable Recommendations</div>
+                  </div>
+                  <div style={{ fontSize: 12, opacity: 0.9 }}>AI Suggestions</div>
+                </div>
+                
+                <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(350px, 1fr))", gap: "1.5rem" }}>
+                  <div style={{
+                    background: COLORS.white,
+                    borderRadius: 12,
+                    padding: 20,
+                    border: `1px solid ${COLORS.borderGray}`,
+                    boxShadow: "0 2px 8px rgba(0,0,0,0.05)"
+                  }}>
+                    <div style={{ fontWeight: 700, color: COLORS.darkBlue, marginBottom: 12 }}>Immediate Actions (This Week)</div>
+                    <ul style={{ fontSize: 14, color: COLORS.darkBlue, lineHeight: 1.6, paddingLeft: 20 }}>
+                      <li style={{ marginBottom: 8 }}>Schedule 1:1 with Michael Rodriguez to address delays</li>
+                      <li style={{ marginBottom: 8 }}>Assign additional mentor support for David Kim</li>
+                      <li style={{ marginBottom: 8 }}>Recognise Sarah Chen's exceptional progress</li>
+                    </ul>
+                  </div>
+
+                  <div style={{
+                    background: COLORS.white,
+                    borderRadius: 12,
+                    padding: 20,
+                    border: `1px solid ${COLORS.borderGray}`,
+                    boxShadow: "0 2px 8px rgba(0,0,0,0.05)"
+                  }}>
+                    <div style={{ fontWeight: 700, color: COLORS.darkBlue, marginBottom: 12 }}>Strategic Initiatives (Next Month)</div>
+                    <ul style={{ fontSize: 14, color: COLORS.darkBlue, lineHeight: 1.6, paddingLeft: 20 }}>
+                      <li style={{ marginBottom: 8 }}>Implement peer mentoring programme</li>
+                      <li style={{ marginBottom: 8 }}>Create advanced training path for high performers</li>
+                      <li style={{ marginBottom: 8 }}>Establish regular team check-ins</li>
+                    </ul>
+                  </div>
                 </div>
               </div>
             </div>
           )}
 
+          {/* Growth Tab Content */}
+          {activeTab === "Growth" && (
+            <div style={{ display: "flex", flexDirection: "column", gap: "2.5rem" }}>
+              {/* Employee Selection */}
+              <div style={{ 
+                background: COLORS.white, 
+                borderRadius: 16, 
+                padding: 24,
+                boxShadow: CARD_SHADOW,
+                border: `1px solid ${COLORS.borderGray}`
+              }}>
+                <h3 style={{ fontSize: 20, fontWeight: 700, color: COLORS.darkBlue, marginBottom: 16 }}>
+                  Select Employee for Growth Analysis
+                </h3>
+                <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(250px, 1fr))", gap: 16 }}>
+                  {managerNewHires.map((employee) => (
+                    <div
+                      key={employee.id}
+                      onClick={() => handleEmployeeSelect(employee)}
+                      style={{
+                        background: selectedEmployee?.id === employee.id ? COLORS.teal : COLORS.lightGray,
+                        color: selectedEmployee?.id === employee.id ? COLORS.white : COLORS.darkBlue,
+                        borderRadius: 12,
+                        padding: 16,
+                        cursor: "pointer",
+                        border: `2px solid ${selectedEmployee?.id === employee.id ? COLORS.teal : COLORS.borderGray}`,
+                        transition: "all 0.2s",
+                        display: "flex",
+                        alignItems: "center",
+                        gap: 12
+                      }}
+                    >
+                      <div style={{
+                        width: 40,
+                        height: 40,
+                        borderRadius: "50%",
+                        background: selectedEmployee?.id === employee.id ? COLORS.white : COLORS.darkBlue,
+                        color: selectedEmployee?.id === employee.id ? COLORS.teal : COLORS.white,
+                        display: "flex",
+                        alignItems: "center",
+                        justifyContent: "center",
+                        fontWeight: 700,
+                        fontSize: 16
+                      }}>
+                        {getInitials(employee.name)}
+                      </div>
+                      <div>
+                        <div style={{ fontWeight: 600, fontSize: 14 }}>
+                          {employee.name}
+                        </div>
+                        <div style={{ fontSize: 12, opacity: 0.8 }}>
+                          {employee.role}
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+
+              {/* Growth Content for Selected Employee */}
+              {selectedEmployee && (
+                <>
+                  {/* Personal Development Journey */}
+                  <div style={{ background: COLORS.white, borderRadius: 18, boxShadow: CARD_SHADOW, padding: 40, marginBottom: 8, display: "flex", flexDirection: "column", alignItems: "center" }}>
+                    <div style={{ fontWeight: 800, fontSize: 24, color: COLORS.teal, marginBottom: 24 }}>
+                      {selectedEmployee.name}'s Personal Development Journey
+                    </div>
+                    <div style={{ display: "flex", alignItems: "center", justifyContent: "center", width: "100%", gap: 0, position: "relative", marginBottom: 24 }}>
+                      {/* Development Path */}
+                      <div style={{ position: "absolute", top: 32, left: 60, right: 60, height: 8, background: COLORS.gray, borderRadius: 8, zIndex: 0 }} />
+                      {/* Development Stages */}
+                      {[
+                        { label: "Self-Awareness", color: COLORS.teal, complete: completedTests.length > 0, icon: "🧠", key: 'self-awareness' },
+                        { label: "Goal Setting", color: COLORS.yellow, complete: false, icon: "🎯", key: 'goal-setting' },
+                        { label: "Skill Building", color: COLORS.orange, complete: false, icon: "📚", key: 'skill-building' },
+                      ].map((stage, idx) => (
+                        <div key={stage.label} style={{ position: "relative", zIndex: 1, flex: 1, display: "flex", flexDirection: "column", alignItems: "center" }}>
+                          <div 
+                            style={{
+                              width: 64,
+                              height: 64,
+                              borderRadius: "50%",
+                              background: stage.complete ? stage.color : COLORS.white,
+                              border: `4px solid ${stage.complete ? stage.color : COLORS.gray}`,
+                              display: "flex",
+                              alignItems: "center",
+                              justifyContent: "center",
+                              fontWeight: 800,
+                              fontSize: 24,
+                              color: stage.complete ? COLORS.white : COLORS.darkBlue,
+                              transition: "all 0.3s",
+                              cursor: "pointer",
+                              boxShadow: activeGrowthCategory === stage.key ? `0 0 0 8px ${stage.color}33` : undefined,
+                            }}
+                            onClick={() => setActiveGrowthCategory(stage.key as any)}
+                          >
+                            {stage.icon}
+                          </div>
+                          <div style={{ 
+                            marginTop: 12, 
+                            fontWeight: 700, 
+                            color: activeGrowthCategory === stage.key ? stage.color : COLORS.darkBlue, 
+                            fontSize: 14, 
+                            textAlign: "center",
+                            cursor: "pointer"
+                          }}
+                          onClick={() => setActiveGrowthCategory(stage.key as any)}
+                          >
+                            {stage.label}
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+
+                  {/* Category Content */}
+                  {activeGrowthCategory === 'self-awareness' && (
+                    <>
+                      {/* Growth Insights Section */}
+                      {(growthInsights.length > 0 || additionalInsights.length > 0) && (
+                        <div style={{ background: COLORS.white, borderRadius: 18, boxShadow: CARD_SHADOW, padding: 32 }}>
+                          <div style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 24 }}>
+                            <div style={{ width: 8, height: 32, background: COLORS.teal, borderRadius: 4 }} />
+                            <div style={{ fontWeight: 800, fontSize: 22, color: COLORS.darkBlue }}>AI-Generated Insights</div>
+                          </div>
+                          
+                          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(300px, 1fr))", gap: 20 }}>
+                            {[...growthInsights, ...additionalInsights].map((insight, idx) => (
+                              <div key={idx} style={{
+                                background: COLORS.lightGray,
+                                borderRadius: 16,
+                                border: `1px solid ${COLORS.borderGray}`,
+                                padding: 20,
+                                position: "relative"
+                              }}>
+                                <div style={{ 
+                                  display: "flex", 
+                                  alignItems: "center", 
+                                  gap: 8, 
+                                  marginBottom: 12 
+                                }}>
+                                  <div style={{ fontSize: 20 }}>{getInsightIcon(insight.insight_type)}</div>
+                                  <div style={{ 
+                                    fontWeight: 700, 
+                                    fontSize: 16, 
+                                    color: getInsightColor(insight.insight_type) 
+                                  }}>
+                                    {insight.title}
+                                  </div>
+                                </div>
+                                
+                                <div style={{ 
+                                  fontSize: 14, 
+                                  color: COLORS.darkBlue, 
+                                  marginBottom: 12,
+                                  lineHeight: 1.5
+                                }}>
+                                  {insight.description}
+                                </div>
+                                
+                                {insight.actionable_items && insight.actionable_items.length > 0 && (
+                                  <div>
+                                    <div style={{ 
+                                      fontWeight: 600, 
+                                      fontSize: 13, 
+                                      color: COLORS.darkBlue, 
+                                      marginBottom: 8 
+                                    }}>
+                                      Action Items:
+                                    </div>
+                                    <ul style={{ margin: 0, paddingLeft: 16 }}>
+                                      {insight.actionable_items.map((item: string, itemIdx: number) => (
+                                        <li key={itemIdx} style={{ 
+                                          fontSize: 13, 
+                                          color: COLORS.textGray, 
+                                          marginBottom: 4,
+                                          lineHeight: 1.4
+                                        }}>
+                                          {item}
+                                        </li>
+                                      ))}
+                                    </ul>
+                                  </div>
+                                )}
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+                      )}
+
+                      {/* Tests & Assessments Section */}
+                      <div style={{ background: COLORS.white, borderRadius: 18, boxShadow: CARD_SHADOW, padding: 32 }}>
+                        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 24 }}>
+                          <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+                            <div style={{ width: 8, height: 32, background: COLORS.yellow, borderRadius: 4 }} />
+                            <div style={{ fontWeight: 800, fontSize: 22, color: COLORS.darkBlue }}>Tests & Assessments</div>
+                          </div>
+                        </div>
+
+                        {/* Test Categories */}
+                        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(300px, 1fr))", gap: 20 }}>
+                          {/* Completed Tests */}
+                          <div style={{ 
+                            background: COLORS.lightGray,
+                            borderRadius: 16,
+                            border: `1px solid ${COLORS.borderGray}`,
+                            padding: 24,
+                            overflow: "hidden"
+                          }}>
+                            <div style={{ 
+                              display: "flex", 
+                              alignItems: "center", 
+                              gap: 12, 
+                              marginBottom: 16,
+                              padding: "12px 16px",
+                              background: COLORS.darkBlue,
+                              borderRadius: 12,
+                              color: COLORS.white
+                            }}>
+                              <div style={{ fontWeight: 700, fontSize: 16 }}>Completed Tests ({completedTests.length})</div>
+                            </div>
+                            
+                            {completedTests.length > 0 ? (
+                              completedTests.map((test, idx) => (
+                                <div key={idx} style={{
+                                  background: COLORS.white,
+                                  borderRadius: 12,
+                                  padding: 16,
+                                  marginBottom: 12,
+                                  border: `1px solid ${COLORS.borderGray}`,
+                                  boxShadow: "0 2px 8px rgba(0,0,0,0.05)"
+                                }}>
+                                  <div style={{ fontWeight: 700, color: COLORS.darkBlue, marginBottom: 4 }}>
+                                    {test.growth_tests?.name || 'Test'}
+                                  </div>
+                                  <div style={{ fontSize: 14, color: COLORS.teal, fontWeight: 600, marginBottom: 4 }}>
+                                    Result: {test.result_summary}
+                                  </div>
+                                  {test.insights && test.insights.length > 0 && (
+                                    <div style={{ fontSize: 13, color: COLORS.textGray }}>
+                                      {test.insights[0]}
+                                    </div>
+                                  )}
+                                  <div style={{ fontSize: 11, color: COLORS.textGray, marginTop: 8 }}>
+                                    Completed: {formatDate(test.completed_at)}
+                                  </div>
+                                </div>
+                              ))
+                            ) : (
+                              <div style={{ 
+                                textAlign: "center", 
+                                padding: "2rem", 
+                                color: COLORS.textGray,
+                                fontSize: 14
+                              }}>
+                                No tests completed yet. Start your journey by taking a test!
+                              </div>
+                            )}
+                          </div>
+
+                          {/* Available Tests */}
+                          <div style={{ 
+                            background: COLORS.lightGray,
+                            borderRadius: 16,
+                            border: `1px solid ${COLORS.borderGray}`,
+                            padding: 24,
+                            overflow: "hidden"
+                          }}>
+                            <div style={{ 
+                              display: "flex", 
+                              alignItems: "center", 
+                              gap: 12, 
+                              marginBottom: 16,
+                              padding: "12px 16px",
+                              background: COLORS.yellow,
+                              borderRadius: 12,
+                              color: COLORS.darkBlue
+                            }}>
+                              <div style={{ fontWeight: 700, fontSize: 16 }}>Available Tests</div>
+                            </div>
+                            
+                            {growthTests.filter(test => !test.isCompleted).map((test, idx) => (
+                              <div key={idx} style={{
+                                background: COLORS.white,
+                                borderRadius: 12,
+                                padding: 16,
+                                marginBottom: 12,
+                                border: `1px solid ${COLORS.borderGray}`,
+                                boxShadow: "0 2px 8px rgba(0,0,0,0.05)",
+                                cursor: "pointer",
+                                transition: "all 0.2s"
+                              }}
+                              onMouseEnter={(e) => {
+                                e.currentTarget.style.transform = "translateY(-2px)";
+                                e.currentTarget.style.boxShadow = "0 4px 12px rgba(0,0,0,0.1)";
+                              }}
+                              onMouseLeave={(e) => {
+                                e.currentTarget.style.transform = "translateY(0)";
+                                e.currentTarget.style.boxShadow = "none";
+                              }}
+                              >
+                                <div style={{ fontWeight: 700, color: COLORS.darkBlue, marginBottom: 4 }}>{test.name}</div>
+                                <div style={{ fontSize: 13, color: COLORS.textGray, marginBottom: 8 }}>{test.description}</div>
+                                <div style={{ fontSize: 12, color: COLORS.teal, fontWeight: 600 }}>
+                                  Duration: {test.duration_minutes || '5-10'} min
+                                </div>
+                              </div>
+                            ))}
+                            
+                            {growthTests.filter(test => !test.isCompleted).length === 0 && (
+                              <div style={{ 
+                                textAlign: "center", 
+                                padding: "2rem", 
+                                color: COLORS.textGray,
+                                fontSize: 14
+                              }}>
+                                All tests completed! Great job on your development journey.
+                              </div>
+                            )}
+                          </div>
+                        </div>
+                      </div>
+                    </>
+                  )}
+
+                  {activeGrowthCategory === 'goal-setting' && (
+                    <div style={{ background: COLORS.white, borderRadius: 18, boxShadow: CARD_SHADOW, padding: 32 }}>
+                      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 24 }}>
+                        <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+                          <div style={{ width: 8, height: 32, background: COLORS.yellow, borderRadius: 4 }} />
+                          <div style={{ fontWeight: 800, fontSize: 22, color: COLORS.darkBlue }}>Career Goals & Objectives</div>
+                        </div>
+                      </div>
+
+                      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(300px, 1fr))", gap: 20 }}>
+                        {goals.map((goal, idx) => (
+                          <div key={goal.id} style={{
+                            background: COLORS.lightGray,
+                            borderRadius: 16,
+                            border: `1px solid ${COLORS.borderGray}`,
+                            padding: 20,
+                            position: "relative"
+                          }}>
+                            <div style={{ 
+                              display: "flex", 
+                              alignItems: "center", 
+                              justifyContent: "space-between", 
+                              marginBottom: 12 
+                            }}>
+                              <div style={{ fontWeight: 700, fontSize: 18, color: COLORS.darkBlue }}>
+                                {goal.title}
+                              </div>
+                              <div style={{
+                                background: getPriorityColor(goal.priority),
+                                color: COLORS.white,
+                                padding: "4px 8px",
+                                borderRadius: 4,
+                                fontSize: 12,
+                                fontWeight: 600
+                              }}>
+                                {goal.priority.toUpperCase()}
+                              </div>
+                            </div>
+                            
+                            <div style={{ 
+                              fontSize: 14, 
+                              color: COLORS.textGray, 
+                              marginBottom: 12,
+                              lineHeight: 1.5
+                            }}>
+                              {goal.description}
+                            </div>
+
+                            {/* Progress Bar */}
+                            <div style={{ marginBottom: 12 }}>
+                              <div style={{ 
+                                display: "flex", 
+                                justifyContent: "space-between", 
+                                alignItems: "center", 
+                                marginBottom: 4 
+                              }}>
+                                <span style={{ fontSize: 12, color: COLORS.textGray }}>Progress</span>
+                                <span style={{ fontSize: 12, color: COLORS.teal, fontWeight: 600 }}>{goal.progress}%</span>
+                              </div>
+                              <div style={{
+                                width: "100%",
+                                height: 8,
+                                background: COLORS.gray,
+                                borderRadius: 4,
+                                overflow: "hidden"
+                              }}>
+                                <div style={{
+                                  width: `${goal.progress}%`,
+                                  height: "100%",
+                                  background: COLORS.teal,
+                                  transition: "width 0.3s ease"
+                                }} />
+                              </div>
+                            </div>
+                            
+                            <div style={{ 
+                              display: "flex", 
+                              alignItems: "center", 
+                              justifyContent: "space-between",
+                              marginBottom: 12
+                            }}>
+                              <div style={{
+                                background: getTimeframeColor(goal.timeframe),
+                                color: COLORS.white,
+                                padding: "4px 8px",
+                                borderRadius: 4,
+                                fontSize: 12,
+                                fontWeight: 600
+                              }}>
+                                {goal.timeframe.replace('-', ' ').toUpperCase()}
+                              </div>
+                              <div style={{ fontSize: 12, color: COLORS.textGray }}>
+                                Added: {formatDate(goal.created_at)}
+                              </div>
+                            </div>
+
+                            {/* Comments Section */}
+                            <div style={{ borderTop: `1px solid ${COLORS.borderGray}`, paddingTop: 12 }}>
+                              <div style={{ 
+                                display: "flex", 
+                                justifyContent: "space-between", 
+                                alignItems: "center", 
+                                marginBottom: 8 
+                              }}>
+                                <span style={{ fontSize: 12, color: COLORS.textGray, fontWeight: 600 }}>
+                                  Comments ({goal.comments.length})
+                                </span>
+                                <button
+                                  onClick={() => setShowGoalComments(showGoalComments === goal.id ? null : goal.id)}
+                                  style={{
+                                    background: "none",
+                                    border: "none",
+                                    color: COLORS.teal,
+                                    fontSize: 12,
+                                    cursor: "pointer",
+                                    fontWeight: 600
+                                  }}
+                                >
+                                  {showGoalComments === goal.id ? 'Hide' : 'Show'}
+                                </button>
+                              </div>
+
+                              {showGoalComments === goal.id && (
+                                <div style={{ marginBottom: 12 }}>
+                                  {goal.comments.map((comment) => (
+                                    <div key={comment.id} style={{
+                                      background: COLORS.white,
+                                      borderRadius: 8,
+                                      padding: 8,
+                                      marginBottom: 8,
+                                      border: `1px solid ${COLORS.borderGray}`
+                                    }}>
+                                      <div style={{ 
+                                        display: "flex", 
+                                        justifyContent: "space-between", 
+                                        alignItems: "center", 
+                                        marginBottom: 4 
+                                      }}>
+                                        <div style={{ fontSize: 12, color: COLORS.textGray }}>
+                                          <strong>{comment.author}</strong> • {formatDate(comment.created_at)}
+                                        </div>
+                                        {comment.author === (currentManager?.name || "Manager") && (
+                                          <div style={{ display: "flex", gap: 4 }}>
+                                            <button
+                                              onClick={() => startEditGoalComment(goal.id, comment.id, comment.text)}
+                                              style={{
+                                                background: COLORS.teal,
+                                                color: COLORS.white,
+                                                border: "none",
+                                                borderRadius: 2,
+                                                padding: "2px 4px",
+                                                fontSize: 10,
+                                                fontWeight: 600,
+                                                cursor: "pointer"
+                                              }}
+                                            >
+                                              Edit
+                                            </button>
+                                            <button
+                                              onClick={() => handleDeleteGoalComment(goal.id, comment.id)}
+                                              style={{
+                                                background: COLORS.errorRed,
+                                                color: COLORS.white,
+                                                border: "none",
+                                                borderRadius: 2,
+                                                padding: "2px 4px",
+                                                fontSize: 10,
+                                                fontWeight: 600,
+                                                cursor: "pointer"
+                                              }}
+                                            >
+                                              Delete
+                                            </button>
+                                          </div>
+                                        )}
+                                      </div>
+                                      
+                                      {editingGoalComment?.goalId === goal.id && editingGoalComment?.commentId === comment.id ? (
+                                        <div>
+                                          <textarea
+                                            value={editingGoalCommentText}
+                                            onChange={(e) => setEditingGoalCommentText(e.target.value)}
+                                            style={{
+                                              width: "100%",
+                                              minHeight: "40px",
+                                              padding: "4px 8px",
+                                              border: `1px solid ${COLORS.borderGray}`,
+                                              borderRadius: 4,
+                                              fontSize: 12,
+                                              resize: "vertical",
+                                              color: COLORS.darkBlue,
+                                              marginBottom: "4px"
+                                            }}
+                                          />
+                                          <div style={{ display: "flex", gap: 4 }}>
+                                            <button
+                                              onClick={handleEditGoalComment}
+                                              style={{
+                                                background: COLORS.successGreen,
+                                                color: COLORS.white,
+                                                border: "none",
+                                                borderRadius: 2,
+                                                padding: "2px 6px",
+                                                fontSize: 10,
+                                                fontWeight: 600,
+                                                cursor: "pointer"
+                                              }}
+                                            >
+                                              Save
+                                            </button>
+                                            <button
+                                              onClick={() => {
+                                                setEditingGoalComment(null);
+                                                setEditingGoalCommentText('');
+                                              }}
+                                              style={{
+                                                background: COLORS.darkGray,
+                                                color: COLORS.white,
+                                                border: "none",
+                                                borderRadius: 2,
+                                                padding: "2px 6px",
+                                                fontSize: 10,
+                                                fontWeight: 600,
+                                                cursor: "pointer"
+                                              }}
+                                            >
+                                              Cancel
+                                            </button>
+                                          </div>
+                                        </div>
+                                      ) : (
+                                        <div style={{ fontSize: 13, color: COLORS.darkBlue }}>
+                                          {comment.text}
+                                        </div>
+                                      )}
+                                    </div>
+                                  ))}
+                                  
+                                  <div style={{ display: "flex", gap: 8 }}>
+                                    <input
+                                      type="text"
+                                      value={newGoalComment}
+                                      onChange={(e) => setNewGoalComment(e.target.value)}
+                                      placeholder="Add a comment..."
+                                      style={{
+                                        flex: 1,
+                                        padding: "8px 12px",
+                                        border: `1px solid ${COLORS.borderGray}`,
+                                        borderRadius: 4,
+                                        fontSize: 12,
+                                        color: COLORS.darkBlue
+                                      }}
+                                      onKeyPress={(e) => e.key === 'Enter' && handleAddGoalComment(goal.id)}
+                                    />
+                                    <button
+                                      onClick={() => handleAddGoalComment(goal.id)}
+                                      disabled={!newGoalComment.trim()}
+                                      style={{
+                                        background: newGoalComment.trim() ? COLORS.teal : COLORS.gray,
+                                        color: COLORS.white,
+                                        border: "none",
+                                        borderRadius: 4,
+                                        padding: "8px 12px",
+                                        fontSize: 12,
+                                        cursor: newGoalComment.trim() ? "pointer" : "not-allowed"
+                                      }}
+                                    >
+                                      Add
+                                    </button>
+                                  </div>
+                                </div>
+                              )}
+                            </div>
+                          </div>
+                        ))}
+                        
+                        {goals.length === 0 && (
+                          <div style={{ 
+                            textAlign: "center", 
+                            padding: "3rem", 
+                            color: COLORS.textGray,
+                            fontSize: 16,
+                            gridColumn: "1 / -1"
+                          }}>
+                            No goals set yet. Employee can add goals from their Growth tab.
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  )}
+
+                  {activeGrowthCategory === 'skill-building' && (
+                    <div style={{ background: COLORS.white, borderRadius: 18, boxShadow: CARD_SHADOW, padding: 32 }}>
+                      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 24 }}>
+                        <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+                          <div style={{ width: 8, height: 32, background: COLORS.orange, borderRadius: 4 }} />
+                          <div style={{ fontWeight: 800, fontSize: 22, color: COLORS.darkBlue }}>Skills Development</div>
+                        </div>
+                      </div>
+
+                      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(300px, 1fr))", gap: 20 }}>
+                        {skills.map((skill, idx) => (
+                          <div key={skill.id} style={{
+                            background: COLORS.lightGray,
+                            borderRadius: 16,
+                            border: `1px solid ${COLORS.borderGray}`,
+                            padding: 20,
+                            position: "relative"
+                          }}>
+                            <div style={{ 
+                              display: "flex", 
+                              alignItems: "center", 
+                              justifyContent: "space-between", 
+                              marginBottom: 12 
+                            }}>
+                              <div style={{ fontWeight: 700, fontSize: 18, color: COLORS.darkBlue }}>
+                                {skill.name}
+                              </div>
+                              <div style={{
+                                background: getPriorityColor(skill.priority),
+                                color: COLORS.white,
+                                padding: "4px 8px",
+                                borderRadius: 4,
+                                fontSize: 12,
+                                fontWeight: 600
+                              }}>
+                                {skill.priority.toUpperCase()}
+                              </div>
+                            </div>
+                            
+                            <div style={{ 
+                              fontSize: 14, 
+                              color: COLORS.textGray, 
+                              marginBottom: 12,
+                              lineHeight: 1.5
+                            }}>
+                              {skill.description}
+                            </div>
+
+                            {/* Progress Bar */}
+                            <div style={{ marginBottom: 12 }}>
+                              <div style={{ 
+                                display: "flex", 
+                                justifyContent: "space-between", 
+                                alignItems: "center", 
+                                marginBottom: 4 
+                              }}>
+                                <span style={{ fontSize: 12, color: COLORS.textGray }}>Progress</span>
+                                <span style={{ fontSize: 12, color: COLORS.orange, fontWeight: 600 }}>{skill.progress}%</span>
+                              </div>
+                              <div style={{
+                                width: "100%",
+                                height: 8,
+                                background: COLORS.gray,
+                                borderRadius: 4,
+                                overflow: "hidden"
+                              }}>
+                                <div style={{
+                                  width: `${skill.progress}%`,
+                                  height: "100%",
+                                  background: COLORS.orange,
+                                  transition: "width 0.3s ease"
+                                }} />
+                              </div>
+                            </div>
+                            
+                            <div style={{ 
+                              display: "flex", 
+                              alignItems: "center", 
+                              justifyContent: "space-between",
+                              marginBottom: 12
+                            }}>
+                              <div style={{
+                                background: skill.status === 'completed' ? COLORS.successGreen : 
+                                         skill.status === 'in-progress' ? COLORS.warningAmber : COLORS.textGray,
+                                color: COLORS.white,
+                                padding: "4px 8px",
+                                borderRadius: 4,
+                                fontSize: 12,
+                                fontWeight: 600
+                              }}>
+                                {skill.status.replace('-', ' ').toUpperCase()}
+                              </div>
+                              {skill.targetDate && (
+                                <div style={{ fontSize: 12, color: COLORS.textGray }}>
+                                  Target: {formatDate(skill.targetDate)}
+                                </div>
+                              )}
+                            </div>
+                            
+                            <div style={{ fontSize: 12, color: COLORS.textGray, marginBottom: 12 }}>
+                              Added: {formatDate(skill.created_at)}
+                            </div>
+
+                            {/* Comments Section */}
+                            <div style={{ borderTop: `1px solid ${COLORS.borderGray}`, paddingTop: 12 }}>
+                              <div style={{ 
+                                display: "flex", 
+                                justifyContent: "space-between", 
+                                alignItems: "center", 
+                                marginBottom: 8 
+                              }}>
+                                <span style={{ fontSize: 12, color: COLORS.textGray, fontWeight: 600 }}>
+                                  Comments ({skill.comments.length})
+                                </span>
+                                <button
+                                  onClick={() => setShowSkillComments(showSkillComments === skill.id ? null : skill.id)}
+                                  style={{
+                                    background: "none",
+                                    border: "none",
+                                    color: COLORS.orange,
+                                    fontSize: 12,
+                                    cursor: "pointer",
+                                    fontWeight: 600
+                                  }}
+                                >
+                                  {showSkillComments === skill.id ? 'Hide' : 'Show'}
+                                </button>
+                              </div>
+
+                              {showSkillComments === skill.id && (
+                                <div style={{ marginBottom: 12 }}>
+                                  {skill.comments.map((comment) => (
+                                    <div key={comment.id} style={{
+                                      background: COLORS.white,
+                                      borderRadius: 8,
+                                      padding: 8,
+                                      marginBottom: 8,
+                                      border: `1px solid ${COLORS.borderGray}`
+                                    }}>
+                                      <div style={{ 
+                                        display: "flex", 
+                                        justifyContent: "space-between", 
+                                        alignItems: "center", 
+                                        marginBottom: 4 
+                                      }}>
+                                        <div style={{ fontSize: 12, color: COLORS.textGray }}>
+                                          <strong>{comment.author}</strong> • {formatDate(comment.created_at)}
+                                        </div>
+                                        {comment.author === (currentManager?.name || "Manager") && (
+                                          <div style={{ display: "flex", gap: 4 }}>
+                                            <button
+                                              onClick={() => startEditSkillComment(skill.id, comment.id, comment.text)}
+                                              style={{
+                                                background: COLORS.orange,
+                                                color: COLORS.white,
+                                                border: "none",
+                                                borderRadius: 2,
+                                                padding: "2px 4px",
+                                                fontSize: 10,
+                                                fontWeight: 600,
+                                                cursor: "pointer"
+                                              }}
+                                            >
+                                              Edit
+                                            </button>
+                                            <button
+                                              onClick={() => handleDeleteSkillComment(skill.id, comment.id)}
+                                              style={{
+                                                background: COLORS.errorRed,
+                                                color: COLORS.white,
+                                                border: "none",
+                                                borderRadius: 2,
+                                                padding: "2px 4px",
+                                                fontSize: 10,
+                                                fontWeight: 600,
+                                                cursor: "pointer"
+                                              }}
+                                            >
+                                              Delete
+                                            </button>
+                                          </div>
+                                        )}
+                                      </div>
+                                      
+                                      {editingSkillComment?.skillId === skill.id && editingSkillComment?.commentId === comment.id ? (
+                                        <div>
+                                          <textarea
+                                            value={editingSkillCommentText}
+                                            onChange={(e) => setEditingSkillCommentText(e.target.value)}
+                                            style={{
+                                              width: "100%",
+                                              minHeight: "40px",
+                                              padding: "4px 8px",
+                                              border: `1px solid ${COLORS.borderGray}`,
+                                              borderRadius: 4,
+                                              fontSize: 12,
+                                              resize: "vertical",
+                                              color: COLORS.darkBlue,
+                                              marginBottom: "4px"
+                                            }}
+                                          />
+                                          <div style={{ display: "flex", gap: 4 }}>
+                                            <button
+                                              onClick={handleEditSkillComment}
+                                              style={{
+                                                background: COLORS.successGreen,
+                                                color: COLORS.white,
+                                                border: "none",
+                                                borderRadius: 2,
+                                                padding: "2px 6px",
+                                                fontSize: 10,
+                                                fontWeight: 600,
+                                                cursor: "pointer"
+                                              }}
+                                            >
+                                              Save
+                                            </button>
+                                            <button
+                                              onClick={() => {
+                                                setEditingSkillComment(null);
+                                                setEditingSkillCommentText('');
+                                              }}
+                                              style={{
+                                                background: COLORS.darkGray,
+                                                color: COLORS.white,
+                                                border: "none",
+                                                borderRadius: 2,
+                                                padding: "2px 6px",
+                                                fontSize: 10,
+                                                fontWeight: 600,
+                                                cursor: "pointer"
+                                              }}
+                                            >
+                                              Cancel
+                                            </button>
+                                          </div>
+                                        </div>
+                                      ) : (
+                                        <div style={{ fontSize: 13, color: COLORS.darkBlue }}>
+                                          {comment.text}
+                                        </div>
+                                      )}
+                                    </div>
+                                  ))}
+                                  
+                                  <div style={{ display: "flex", gap: 8 }}>
+                                    <input
+                                      type="text"
+                                      value={newSkillComment}
+                                      onChange={(e) => setNewSkillComment(e.target.value)}
+                                      placeholder="Add a comment..."
+                                      style={{
+                                        flex: 1,
+                                        padding: "8px 12px",
+                                        border: `1px solid ${COLORS.borderGray}`,
+                                        borderRadius: 4,
+                                        fontSize: 12,
+                                        color: COLORS.darkBlue
+                                      }}
+                                      onKeyPress={(e) => e.key === 'Enter' && handleAddSkillComment(skill.id)}
+                                    />
+                                    <button
+                                      onClick={() => handleAddSkillComment(skill.id)}
+                                      disabled={!newSkillComment.trim()}
+                                      style={{
+                                        background: newSkillComment.trim() ? COLORS.orange : COLORS.gray,
+                                        color: COLORS.white,
+                                        border: "none",
+                                        borderRadius: 4,
+                                        padding: "8px 12px",
+                                        fontSize: 12,
+                                        cursor: newSkillComment.trim() ? "pointer" : "not-allowed"
+                                      }}
+                                    >
+                                      Add
+                                    </button>
+                                  </div>
+                                </div>
+                              )}
+                            </div>
+                          </div>
+                        ))}
+                        
+                        {skills.length === 0 && (
+                          <div style={{ 
+                            textAlign: "center", 
+                            padding: "3rem", 
+                            color: COLORS.textGray,
+                            fontSize: 16,
+                            gridColumn: "1 / -1"
+                          }}>
+                            No skills added yet. Employee can add skills from their Growth tab.
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  )}
+                </>
+              )}
+
+              {/* No Employee Selected */}
+              {!selectedEmployee && (
+                <div style={{ 
+                  background: COLORS.white, 
+                  borderRadius: 18, 
+                  boxShadow: CARD_SHADOW, 
+                  padding: 48,
+                  textAlign: "center"
+                }}>
+                  <div style={{ fontSize: 48, marginBottom: 16 }}>📈</div>
+                  <div style={{ fontWeight: 700, fontSize: 20, color: COLORS.darkBlue, marginBottom: 8 }}>
+                    Select an Employee
+                  </div>
+                  <div style={{ fontSize: 16, color: COLORS.textGray }}>
+                    Choose an employee from the list above to view their growth analysis and development insights.
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
+
           {/* Resources Tab Content */}
           {activeTab === "Resources" && (
-            <div style={{ display: "flex", flexDirection: "column", gap: "2.5rem" }}>
-              {/* Resources Header */}
+            <div style={{ display: "flex", flexDirection: "column", gap: "1.5rem" }}>
+              {/* Resources Header with Add Button */}
               <div style={{ 
                 display: "flex", 
-                alignItems: "center", 
+                alignItems: "flex-start", 
                 justifyContent: "space-between",
-                marginBottom: "1rem"
+                marginBottom: "0.5rem"
               }}>
-                <div>
-                  <h3 style={{ fontSize: 24, fontWeight: 700, color: COLORS.darkBlue, marginBottom: 8 }}>
-                    Resource Library
-                  </h3>
-                  <p style={{ fontSize: 14, color: COLORS.textGray }}>
-                    Manage and share resources with your team members during their onboarding journey
-                  </p>
+                <div style={{ flex: 1 }}>
+                  {/* Empty div to take up space on the left */}
                 </div>
                 <button
                   onClick={() => setShowAddResource(true)}
@@ -1904,15 +3389,15 @@ ${currentManager?.name}`;
                     color: COLORS.white,
                     border: "none",
                     borderRadius: 10,
-                    padding: "12px 20px",
+                    padding: "10px 16px",
                     fontWeight: 600,
                     cursor: "pointer",
-                    fontSize: 14,
+                    fontSize: 13,
                     transition: "all 0.2s",
                     boxShadow: "0 4px 12px rgba(42,157,143,0.2)",
                     display: "flex",
                     alignItems: "center",
-                    gap: "8px"
+                    gap: "6px"
                   }}
                   onMouseEnter={(e) => {
                     e.currentTarget.style.transform = "translateY(-2px)";
@@ -1927,142 +3412,251 @@ ${currentManager?.name}`;
                 </button>
               </div>
 
-              {/* Resources Grid */}
-              <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(350px, 1fr))", gap: "1.5rem" }}>
-                {resources.length === 0 ? (
-                  <div style={{ 
-                    gridColumn: "1 / -1",
-                    background: COLORS.white, 
-                    borderRadius: 16, 
-                    padding: 48,
-                    border: `2px dashed ${COLORS.borderGray}`,
-                    textAlign: "center"
-                  }}>
-                    <div style={{ fontSize: 48, marginBottom: 16 }}>📚</div>
-                    <h4 style={{ fontSize: 18, fontWeight: 600, color: COLORS.darkBlue, marginBottom: 8 }}>
-                      No Resources Yet
-                    </h4>
-                    <p style={{ fontSize: 14, color: COLORS.textGray, marginBottom: 24 }}>
-                      Start building your resource library by adding links, files, and documents for your team
-                    </p>
-                    <button
-                      onClick={() => setShowAddResource(true)}
-                      style={{
-                        background: COLORS.teal,
-                        color: COLORS.white,
-                        border: "none",
-                        borderRadius: 8,
-                        padding: "10px 20px",
-                        fontWeight: 600,
-                        cursor: "pointer",
-                        fontSize: 14
-                      }}
-                    >
-                      Add Your First Resource
-                    </button>
-                  </div>
-                ) : (
-                  resources.map((resource) => (
-                    <div key={resource.id} style={{ 
-                      background: COLORS.white, 
-                      borderRadius: 16, 
-                      padding: 24,
-                      border: `1px solid ${COLORS.borderGray}`,
-                      boxShadow: "0 4px 12px rgba(0,0,0,0.08)",
-                      transition: "all 0.2s"
-                    }}>
-                      <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", marginBottom: 16 }}>
-                        <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
-                          <div style={{ fontSize: 24 }}>{getResourceIcon(resource.type)}</div>
-                          <div>
-                            <h4 style={{ fontSize: 16, fontWeight: 700, color: COLORS.darkBlue, marginBottom: 4 }}>
-                              {resource.title}
-                            </h4>
-                            <div style={{ fontSize: 12, color: COLORS.textGray, background: `${COLORS.teal}10`, padding: "4px 8px", borderRadius: 4, display: "inline-block" }}>
-                              {resource.category}
+                            {/* Resources by Category */}
+              {resources.length === 0 ? (
+                <div style={{ 
+                  background: COLORS.white, 
+                  borderRadius: 16, 
+                  padding: 48,
+                  border: `2px dashed ${COLORS.borderGray}`,
+                  textAlign: "center"
+                }}>
+                  <div style={{ fontSize: 48, marginBottom: 16 }}>📚</div>
+                  <h4 style={{ fontSize: 18, fontWeight: 600, color: COLORS.darkBlue, marginBottom: 8 }}>
+                    No Resources Yet
+                  </h4>
+                  <p style={{ fontSize: 14, color: COLORS.textGray, marginBottom: 24 }}>
+                    Start building your resource library by adding links, files, and documents for your team
+                  </p>
+                  <button
+                    onClick={() => setShowAddResource(true)}
+                    style={{
+                      background: COLORS.teal,
+                      color: COLORS.white,
+                      border: "none",
+                      borderRadius: 8,
+                      padding: "10px 20px",
+                      fontWeight: 600,
+                      cursor: "pointer",
+                      fontSize: 14
+                    }}
+                  >
+                    Add Your First Resource
+                  </button>
+                </div>
+              ) : (
+                (() => {
+                  // Group resources by category
+                  const resourcesByCategory = resources.reduce((acc, resource) => {
+                    const category = resource.category || 'Uncategorized';
+                    if (!acc[category]) {
+                      acc[category] = [];
+                    }
+                    acc[category].push(resource);
+                    return acc;
+                  }, {} as { [key: string]: any[] });
+
+                  // Sort categories alphabetically
+                  const sortedCategories = Object.keys(resourcesByCategory).sort();
+
+                  return (
+                    <div style={{ display: "flex", flexDirection: "column", gap: "1.25rem" }}>
+                      {sortedCategories.map((category) => {
+                        const isCollapsed = collapsedCategories.has(category);
+                        return (
+                          <div key={category} style={{ 
+                            background: COLORS.white, 
+                            borderRadius: 16, 
+                            border: `1px solid ${COLORS.borderGray}`,
+                            boxShadow: "0 4px 12px rgba(0,0,0,0.08)",
+                            overflow: "hidden",
+                            transition: "all 0.3s ease"
+                          }}>
+                            {/* Category Header */}
+                            <div 
+                              style={{
+                                background: COLORS.teal,
+                                color: COLORS.white,
+                                padding: "16px 24px",
+                                borderBottom: isCollapsed ? "none" : `1px solid ${COLORS.borderGray}`,
+                                cursor: "pointer",
+                                transition: "all 0.2s ease"
+                              }}
+                              onClick={() => toggleCategoryCollapse(category)}
+                              onMouseEnter={(e) => {
+                                e.currentTarget.style.background = "#248277";
+                              }}
+                              onMouseLeave={(e) => {
+                                e.currentTarget.style.background = COLORS.teal;
+                              }}
+                            >
+                              <h3 style={{ 
+                                fontSize: 18, 
+                                fontWeight: 700, 
+                                margin: 0,
+                                display: "flex",
+                                alignItems: "center",
+                                justifyContent: "space-between"
+                              }}>
+                                <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+                                  {category}
+                                  <span style={{ 
+                                    fontSize: 14, 
+                                    opacity: 0.8,
+                                    fontWeight: 500
+                                  }}>
+                                    ({resourcesByCategory[category].length} resource{resourcesByCategory[category].length !== 1 ? 's' : ''})
+                                  </span>
+                                </div>
+                                <div style={{ 
+                                  fontSize: 16, 
+                                  transition: "transform 0.3s ease",
+                                  transform: isCollapsed ? "rotate(-90deg)" : "rotate(0deg)"
+                                }}>
+                                  ▼
+                                </div>
+                              </h3>
+                            </div>
+                            
+                            {/* Resources in this category */}
+                            <div style={{ 
+                              padding: "0",
+                              maxHeight: isCollapsed ? "0" : "1000px",
+                              overflow: "hidden",
+                              transition: "max-height 0.3s ease"
+                            }}>
+                              {resourcesByCategory[category].map((resource) => (
+                                <div key={resource.id} style={{ 
+                                  padding: "20px 24px",
+                                  borderBottom: resourcesByCategory[category].indexOf(resource) !== resourcesByCategory[category].length - 1 ? `1px solid ${COLORS.borderGray}` : "none",
+                                  background: COLORS.white,
+                                  transition: "all 0.2s"
+                                }}>
+                                  <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", marginBottom: 12 }}>
+                                    <div style={{ display: "flex", alignItems: "center", gap: 12, flex: 1 }}>
+                                      <div style={{ fontSize: 20 }}>{getResourceIcon(resource.type)}</div>
+                                      <div style={{ flex: 1 }}>
+                                        <h4 style={{ 
+                                          fontSize: 16, 
+                                          fontWeight: 700, 
+                                          color: COLORS.darkBlue, 
+                                          marginBottom: 4,
+                                          cursor: resource.type === 'file' ? 'pointer' : 'default'
+                                        }}
+                                        onClick={resource.type === 'file' ? () => {
+                                          window.open(`/api/resources/${resource.id}/download`, '_blank');
+                                        } : undefined}
+                                        >
+                                          {resource.title}
+                                        </h4>
+                                        <p style={{ fontSize: 14, color: COLORS.textGray, marginBottom: 8, lineHeight: 1.4 }}>
+                                          {resource.description}
+                                        </p>
+                                        <div style={{ fontSize: 12, color: COLORS.textGray }}>
+                                          <strong>Access:</strong> {getAccessibleEmployeesText(resource)}
+                                        </div>
+                                      </div>
+                                    </div>
+                                    <div style={{ display: "flex", gap: "8px", alignItems: "flex-start" }}>
+                                      {resource.type === 'link' && resource.url && (
+                                        <a 
+                                          href={resource.url} 
+                                          target="_blank" 
+                                          rel="noopener noreferrer"
+                                          style={{ 
+                                            color: COLORS.teal, 
+                                            textDecoration: "none",
+                                            fontSize: 12,
+                                            padding: "4px 8px",
+                                            borderRadius: 4,
+                                            border: `1px solid ${COLORS.teal}`,
+                                            background: `${COLORS.teal}10`
+                                          }}
+                                        >
+                                          Open Link →
+                                        </a>
+                                      )}
+                                      {resource.type === 'file' && resource.file_path && (
+                                        <a 
+                                          href={`/api/resources/${resource.id}/download`}
+                                          target="_blank"
+                                          rel="noopener noreferrer"
+                                          style={{ 
+                                            color: COLORS.teal, 
+                                            textDecoration: "none",
+                                            fontSize: 12,
+                                            padding: "4px 8px",
+                                            borderRadius: 4,
+                                            border: `1px solid ${COLORS.teal}`,
+                                            background: `${COLORS.teal}10`
+                                          }}
+                                        >
+                                          Download File →
+                                        </a>
+                                      )}
+                                      <button
+                                        onClick={() => setEditingResource(resource)}
+                                        style={{
+                                          background: "transparent",
+                                          color: COLORS.darkBlue,
+                                          border: `1px solid ${COLORS.borderGray}`,
+                                          borderRadius: 6,
+                                          padding: "6px 10px",
+                                          cursor: "pointer",
+                                          fontSize: 12,
+                                          transition: "all 0.2s"
+                                        }}
+                                        onMouseEnter={(e) => {
+                                          e.currentTarget.style.background = COLORS.lightGray;
+                                        }}
+                                        onMouseLeave={(e) => {
+                                          e.currentTarget.style.background = "transparent";
+                                        }}
+                                      >
+                                        Edit
+                                      </button>
+                                      <button
+                                        onClick={() => handleDeleteResource(resource.id)}
+                                        style={{
+                                          background: "transparent",
+                                          color: COLORS.errorRed,
+                                          border: `1px solid ${COLORS.errorRed}`,
+                                          borderRadius: 6,
+                                          padding: "6px 10px",
+                                          cursor: "pointer",
+                                          fontSize: 12,
+                                          transition: "all 0.2s"
+                                        }}
+                                        onMouseEnter={(e) => {
+                                          e.currentTarget.style.background = COLORS.errorRed;
+                                          e.currentTarget.style.color = COLORS.white;
+                                        }}
+                                        onMouseLeave={(e) => {
+                                          e.currentTarget.style.background = "transparent";
+                                          e.currentTarget.style.color = COLORS.errorRed;
+                                        }}
+                                      >
+                                        Delete
+                                      </button>
+                                    </div>
+                                  </div>
+                                  
+                                  <div style={{ fontSize: 11, color: COLORS.textGray, opacity: 0.7 }}>
+                                    Created {new Date(resource.created_at).toLocaleDateString('en-GB')}
+                                    {resource.updated_at !== resource.created_at && 
+                                      ` • Updated ${new Date(resource.updated_at).toLocaleDateString('en-GB')}`
+                                    }
+                                  </div>
+                                </div>
+                              ))}
                             </div>
                           </div>
-                        </div>
-                        <div style={{ display: "flex", gap: "8px" }}>
-                          <button
-                            onClick={() => setEditingResource(resource)}
-                            style={{
-                              background: "transparent",
-                              color: COLORS.darkBlue,
-                              border: `1px solid ${COLORS.borderGray}`,
-                              borderRadius: 6,
-                              padding: "6px 10px",
-                              cursor: "pointer",
-                              fontSize: 12,
-                              transition: "all 0.2s"
-                            }}
-                            onMouseEnter={(e) => {
-                              e.currentTarget.style.background = COLORS.lightGray;
-                            }}
-                            onMouseLeave={(e) => {
-                              e.currentTarget.style.background = "transparent";
-                            }}
-                          >
-                            Edit
-                          </button>
-                          <button
-                            onClick={() => deleteResource(resource.id)}
-                            style={{
-                              background: "transparent",
-                              color: COLORS.errorRed,
-                              border: `1px solid ${COLORS.errorRed}`,
-                              borderRadius: 6,
-                              padding: "6px 10px",
-                              cursor: "pointer",
-                              fontSize: 12,
-                              transition: "all 0.2s"
-                            }}
-                            onMouseEnter={(e) => {
-                              e.currentTarget.style.background = COLORS.errorRed;
-                              e.currentTarget.style.color = COLORS.white;
-                            }}
-                            onMouseLeave={(e) => {
-                              e.currentTarget.style.background = "transparent";
-                              e.currentTarget.style.color = COLORS.errorRed;
-                            }}
-                          >
-                            Delete
-                          </button>
-                        </div>
-                      </div>
-                      
-                      <p style={{ fontSize: 14, color: COLORS.textGray, marginBottom: 16, lineHeight: 1.5 }}>
-                        {resource.description}
-                      </p>
-                      
-                      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 12 }}>
-                        <div style={{ fontSize: 12, color: COLORS.textGray }}>
-                          <strong>Access:</strong> {getAccessibleEmployeesText(resource)}
-                        </div>
-                        <div style={{ fontSize: 12, color: COLORS.textGray }}>
-                          {resource.type === 'link' && resource.url && (
-                            <a 
-                              href={resource.url} 
-                              target="_blank" 
-                              rel="noopener noreferrer"
-                              style={{ color: COLORS.teal, textDecoration: "none" }}
-                            >
-                              Open Link →
-                            </a>
-                          )}
-                        </div>
-                      </div>
-                      
-                      <div style={{ fontSize: 11, color: COLORS.textGray, opacity: 0.7 }}>
-                        Created {new Date(resource.created_at).toLocaleDateString('en-GB')}
-                        {resource.updated_at !== resource.created_at && 
-                          ` • Updated ${new Date(resource.updated_at).toLocaleDateString('en-GB')}`
-                        }
-                      </div>
+                        );
+                      })}
                     </div>
-                  ))
-                )}
-              </div>
+                  );
+                })()
+              )}
             </div>
           )}
         </section>
@@ -2137,6 +3731,151 @@ ${currentManager?.name}`;
           </div>
         </div>
       )}
+
+      {/* Buddy Assignment Modal */}
+      {showBuddyAssignment && (
+        <div style={{
+          position: "fixed",
+          top: 0,
+          left: 0,
+          right: 0,
+          bottom: 0,
+          background: "rgba(0,0,0,0.5)",
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "center",
+          zIndex: 1000,
+          padding: "2rem"
+        }}>
+          <div style={{
+            background: COLORS.white,
+            borderRadius: 20,
+            padding: "2rem",
+            maxWidth: 500,
+            width: "100%",
+            boxShadow: "0 20px 60px rgba(0,0,0,0.3)"
+          }}>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "1.5rem" }}>
+              <h2 style={{ fontSize: 24, fontWeight: 700, color: COLORS.darkBlue, margin: 0 }}>
+                Assign Buddy
+              </h2>
+              <button
+                onClick={() => {
+                  setShowBuddyAssignment(false);
+                  setSelectedNewHire(null);
+                  setSelectedBuddy('');
+                }}
+                style={{
+                  background: "none",
+                  border: "none",
+                  fontSize: 24,
+                  cursor: "pointer",
+                  color: COLORS.textGray,
+                  padding: 4
+                }}
+              >
+                ×
+              </button>
+            </div>
+
+            <div style={{ marginBottom: "1.5rem" }}>
+              <label style={{ display: "block", marginBottom: 8, fontWeight: 600, color: COLORS.darkBlue }}>
+                Select New Hire *
+              </label>
+              <select
+                value={selectedNewHire?.id || ''}
+                onChange={(e) => {
+                  const newHire = managerNewHires.find(hire => hire.id === parseInt(e.target.value));
+                  setSelectedNewHire(newHire || null);
+                }}
+                style={{
+                  width: "100%",
+                  padding: "12px 16px",
+                  border: `1px solid ${COLORS.borderGray}`,
+                  borderRadius: 8,
+                  fontSize: 16,
+                  color: COLORS.darkBlue,
+                  background: COLORS.white
+                }}
+              >
+                <option value="">Select a new hire...</option>
+                {managerNewHires.filter(hire => !hire.buddy_id).map(hire => (
+                  <option key={hire.id} value={hire.id}>
+                    {hire.name} {hire["surname(s)"]} - {hire.role || 'No role specified'}
+                  </option>
+                ))}
+              </select>
+            </div>
+
+            <div style={{ marginBottom: "1.5rem" }}>
+              <label style={{ display: "block", marginBottom: 8, fontWeight: 600, color: COLORS.darkBlue }}>
+                Select Buddy *
+              </label>
+              <select
+                value={selectedBuddy}
+                onChange={(e) => setSelectedBuddy(e.target.value)}
+                style={{
+                  width: "100%",
+                  padding: "12px 16px",
+                  border: `1px solid ${COLORS.borderGray}`,
+                  borderRadius: 8,
+                  fontSize: 16,
+                  color: COLORS.darkBlue,
+                  background: COLORS.white
+                }}
+              >
+                <option value="">Select a buddy...</option>
+                {buddies.map(buddy => (
+                  <option key={buddy.id} value={buddy.id}>
+                    {buddy.name} {buddy["surname (s)"]}
+                  </option>
+                ))}
+              </select>
+            </div>
+
+            <div style={{ display: "flex", gap: 12, justifyContent: "flex-end" }}>
+              <button
+                onClick={() => {
+                  setShowBuddyAssignment(false);
+                  setSelectedNewHire(null);
+                  setSelectedBuddy('');
+                }}
+                style={{
+                  background: COLORS.lightGray,
+                  color: COLORS.darkBlue,
+                  border: "none",
+                  borderRadius: 8,
+                  padding: "12px 24px",
+                  fontWeight: 600,
+                  fontSize: 16,
+                  cursor: "pointer"
+                }}
+              >
+                Cancel
+              </button>
+              <button
+                onClick={assignBuddyToNewHire}
+                disabled={!selectedNewHire || !selectedBuddy}
+                style={{
+                  background: (!selectedNewHire || !selectedBuddy) ? COLORS.gray : COLORS.teal,
+                  color: COLORS.white,
+                  border: "none",
+                  borderRadius: 8,
+                  padding: "12px 24px",
+                  fontWeight: 600,
+                  fontSize: 16,
+                  cursor: (!selectedNewHire || !selectedBuddy) ? "not-allowed" : "pointer",
+                  transition: "all 0.2s"
+                }}
+              >
+                Assign Buddy
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+
     </div>
   );
 }
@@ -2159,15 +3898,16 @@ function ResourceForm({
     type: resource?.type || 'link',
     url: resource?.url || '',
     file_path: resource?.file_path || '',
-                  category: resource?.category || 'Company Resources',
+    category: resource?.category || 'Company Resources',
     accessible_to: resource?.accessible_to || 'all',
     accessible_employees: resource?.accessible_employees || []
   });
 
+  const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [showCustomCategory, setShowCustomCategory] = useState(false);
   const [customCategory, setCustomCategory] = useState('');
 
-  // Standard categories
+  // Standard categories (sorted alphabetically)
   const standardCategories = [
     'Company Policies',
     'Company Resources',
@@ -2176,17 +3916,44 @@ function ResourceForm({
     'Other',
     'Security Guidelines',
     'Training Materials'
-  ];
+  ].sort();
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    
+    let finalFilePath = formData.file_path;
+    
+    // If it's a file upload and we have a selected file, upload it first
+    if (formData.type === 'file' && selectedFile) {
+      try {
+        const formDataToUpload = new FormData();
+        formDataToUpload.append('file', selectedFile);
+        formDataToUpload.append('title', formData.title);
+        
+        const uploadResponse = await fetch('/api/resources/upload', {
+          method: 'POST',
+          body: formDataToUpload
+        });
+        
+        if (!uploadResponse.ok) {
+          throw new Error('File upload failed');
+        }
+        
+        const uploadResult = await uploadResponse.json();
+        finalFilePath = uploadResult.file_path;
+      } catch (error) {
+        console.error('Error uploading file:', error);
+        alert('Failed to upload file. Please try again.');
+        return;
+      }
+    }
     
     const resourceData = {
       title: formData.title,
       description: formData.description,
       type: formData.type as 'link' | 'file',
       url: formData.type === 'link' ? formData.url : undefined,
-      file_path: formData.type === 'file' ? formData.file_path : undefined,
+      file_path: formData.type === 'file' ? finalFilePath : undefined,
       category: formData.category,
       accessible_to: formData.accessible_to as 'all' | 'specific',
       accessible_employees: formData.accessible_to === 'all' ? [] : formData.accessible_employees,
@@ -2297,6 +4064,7 @@ function ResourceForm({
             onChange={(e) => {
               const file = e.target.files?.[0];
               if (file) {
+                setSelectedFile(file);
                 setFormData(prev => ({ 
                   ...prev, 
                   file_path: file.name 

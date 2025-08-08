@@ -3,7 +3,7 @@ import React, { useState, useEffect } from "react";
 import { useRouter, useParams } from "next/navigation";
 import { useUser } from "@clerk/nextjs";
 import { SignOutButton } from "@clerk/nextjs";
-import { fetchManagers, fetchNewHires, fetchBuddies, fetchResources, createResource, updateResource, deleteResource, type Manager, type NewHire, type Buddy, type Resource, calculateScheduledProgress, calculateActualProgress, calculateActualProgressFromTasks, getCurrentMilestoneFromTasks, calculateWorkingDaysUntilStart, calculateScheduledProgressForFuture, calculateTaskDueDate, formatDueDate, getStatusColor, formatDate, getInitials, fetchOnboardingPlan } from "@/lib/api";
+import { fetchManagers, fetchNewHires, fetchBuddies, fetchOnboardingPlan, fetchResources, createResource, updateResource, deleteResource, getTaskCommentCount, type Manager, type NewHire, type Buddy, type Resource, calculateScheduledProgress, calculateActualProgress, calculateActualProgressFromTasks, getCurrentMilestoneFromTasks, calculateWorkingDaysUntilStart, calculateScheduledProgressForFuture, calculateTaskDueDate, formatDueDate, getStatusColor, formatDate, getInitials, fetchOnboardingFeedback, addOnboardingFeedback, updateOnboardingFeedback, deleteOnboardingFeedback, type OnboardingFeedback, getGrowthTests, getGrowthInsights } from "@/lib/api";
 
 // Color palette and constants
 const COLORS = {
@@ -42,12 +42,45 @@ const [activeTab, setActiveTab] = useState("Overview");
   const [resources, setResources] = useState<Resource[]>([]);
   const [showAddResource, setShowAddResource] = useState(false);
   const [editingResource, setEditingResource] = useState<Resource | null>(null);
-
+  const [collapsedCategories, setCollapsedCategories] = useState<Set<string>>(new Set());
+  const [commentCounts, setCommentCounts] = useState<{ [taskId: string]: number }>({});
+  const [feedback, setFeedback] = useState<OnboardingFeedback[]>([]);
+  const [showAddFeedback, setShowAddFeedback] = useState(false);
+  const [newFeedback, setNewFeedback] = useState({
+    feedbackType: 'general' as 'general' | 'milestone' | 'task' | 'self_assessment',
+    feedbackText: '',
+    rating: 0
+  });
+  const [editingFeedback, setEditingFeedback] = useState<OnboardingFeedback | null>(null);
+  const [editingFeedbackText, setEditingFeedbackText] = useState('');
+  const [growthTests, setGrowthTests] = useState<any[]>([]);
+  const [completedTests, setCompletedTests] = useState<any[]>([]);
+  const [growthInsights, setGrowthInsights] = useState<any[]>([]);
+  const [additionalInsights, setAdditionalInsights] = useState<any[]>([]);
 
 
   const currentManager = managers.find(manager => manager.email === user?.primaryEmailAddress?.emailAddress);
   const currentNewHire = newHires.find(hire => hire.id.toString() === newHireId?.toString());
   const currentBuddy = buddies.find(buddy => buddy.id === currentNewHire?.buddy_id);
+
+  // Function to fetch comment counts for all tasks
+  const fetchCommentCounts = async (plan: any, newHireId: number) => {
+    if (!plan || !plan.plan_data || !plan.plan_data.milestones) return;
+    
+    const commentCounts: { [taskId: string]: number } = {};
+    
+    for (const milestone of plan.plan_data.milestones) {
+      if (milestone.tasks) {
+        for (const task of milestone.tasks) {
+          const taskId = task.id || task.name;
+          const count = await getTaskCommentCount(taskId, newHireId);
+          commentCounts[taskId] = count;
+        }
+      }
+    }
+    
+    return commentCounts;
+  };
 
   const toggleMilestone = (milestoneId: string) => {
     const newCollapsed = new Set(collapsedMilestones);
@@ -92,14 +125,18 @@ const [activeTab, setActiveTab] = useState("Overview");
         // Fetch onboarding plan if we have a valid new hire
         const currentNewHire = newHiresData.find(hire => hire.id.toString() === newHireId?.toString());
         if (currentNewHire) {
-          const plan = await fetchOnboardingPlan(currentNewHire.id);
+          const [plan, resourcesData, feedbackData] = await Promise.all([
+            fetchOnboardingPlan(currentNewHire.id),
+            fetchResources(),
+            fetchOnboardingFeedback(currentNewHire.id)
+          ]);
           setOnboardingPlan(plan);
           
-          // Fetch resources for this employee
-console.log('Fetching resources for employee ID:', currentNewHire.id, 'Type:', typeof currentNewHire.id);
-          const resourcesData = await fetchResources(currentNewHire.id);
+          // Fetch all resources for manager view (not filtered for employee)
+console.log('Fetching all resources for manager view');
 console.log('Fetched resources:', resourcesData);
           setResources(resourcesData);
+          setFeedback(feedbackData);
         }
       } catch (err) {
         setError('Failed to fetch data');
@@ -112,6 +149,76 @@ console.log('Fetched resources:', resourcesData);
       fetchData();
     }
   }, [isLoaded, newHireId]);
+
+  // Refresh onboarding plan when returning from task detail page
+  useEffect(() => {
+    const handleFocus = async () => {
+      if (currentNewHire && !loading) {
+        try {
+          const planData = await fetchOnboardingPlan(currentNewHire.id);
+          setOnboardingPlan(planData);
+        } catch (err) {
+          console.error('Error refreshing onboarding plan:', err);
+        }
+      }
+    };
+
+    window.addEventListener('focus', handleFocus);
+    return () => window.removeEventListener('focus', handleFocus);
+  }, [currentNewHire, loading]);
+
+  // Growth-related functions
+  const fetchGrowthData = async () => {
+    if (!currentNewHire) return;
+
+    try {
+      const testsData = await getGrowthTests(currentNewHire.id);
+      const insightsData = await getGrowthInsights(currentNewHire.id);
+
+      setGrowthTests(testsData.tests || []);
+      setCompletedTests(testsData.completedTests || []);
+      setGrowthInsights(insightsData.insights || []);
+      setAdditionalInsights(insightsData.additionalInsights || []);
+    } catch (error) {
+      console.error('Error fetching growth data:', error);
+    }
+  };
+
+  const getInsightIcon = (type: string) => {
+    switch (type) {
+      case 'personality': return '🧠';
+      case 'leadership': return '👑';
+      case 'communication': return '💬';
+      case 'development': return '📈';
+      case 'strengths': return '💪';
+      default: return '💡';
+    }
+  };
+
+  const getInsightColor = (type: string) => {
+    switch (type) {
+      case 'personality': return COLORS.teal;
+      case 'leadership': return COLORS.yellow;
+      case 'communication': return COLORS.orange;
+      case 'development': return COLORS.darkBlue;
+      case 'strengths': return COLORS.successGreen;
+      default: return COLORS.gray;
+    }
+  };
+
+  // Fetch growth data when currentNewHire changes
+  useEffect(() => {
+    if (currentNewHire) {
+      fetchGrowthData();
+    }
+  }, [currentNewHire]);
+
+  // Fetch growth data when Growth tab is active
+  useEffect(() => {
+    if (activeTab === "Growth" && currentNewHire) {
+      fetchGrowthData();
+    }
+  }, [activeTab, currentNewHire]);
 
   if (!isLoaded || loading) {
     return (
@@ -453,13 +560,101 @@ ${currentManager?.name}`;
           }
   };
 
-  const getResourceIcon = (type: string) => {
+    const getResourceIcon = (type: string) => {
     switch (type) {
       case 'link': return '🔗';
       case 'file': return '📄';
-default: return '📎';
+      default: return '📎';
     }
   };
+
+  // Feedback handling functions
+  const handleAddFeedback = async () => {
+    if (!currentNewHire || !newFeedback.feedbackText.trim()) return;
+
+    const feedbackData = await addOnboardingFeedback(
+      currentNewHire.id,
+      user?.id || '',
+      currentManager?.name || 'Manager',
+      'manager',
+      newFeedback.feedbackType,
+      newFeedback.feedbackText.trim(),
+      newFeedback.rating > 0 ? newFeedback.rating : undefined
+    );
+
+    if (feedbackData) {
+      setFeedback([feedbackData, ...feedback]);
+      setNewFeedback({
+        feedbackType: 'general',
+        feedbackText: '',
+        rating: 0
+      });
+      setShowAddFeedback(false);
+    }
+  };
+
+  const getFeedbackTypeIcon = (type: string) => {
+    switch (type) {
+      case 'general': return '💬';
+      case 'milestone': return '🎯';
+      case 'task': return '✅';
+      case 'self_assessment': return '🧠';
+      default: return '💬';
+    }
+  };
+
+  const getFeedbackTypeLabel = (type: string) => {
+    switch (type) {
+      case 'general': return 'General Feedback';
+      case 'milestone': return 'Milestone Feedback';
+      case 'task': return 'Task Feedback';
+      case 'self_assessment': return 'Self Assessment';
+      default: return 'General Feedback';
+    }
+  };
+
+  const getAuthorRoleColor = (role: string) => {
+    switch (role) {
+      case 'employee': return COLORS.teal;
+      case 'manager': return COLORS.darkBlue;
+      case 'buddy': return COLORS.orange;
+      default: return COLORS.gray;
+    }
+  };
+
+  // Feedback edit/delete functions
+  const handleEditFeedback = async () => {
+    if (!editingFeedback || !editingFeedbackText.trim()) return;
+
+    const updatedFeedback = await updateOnboardingFeedback(
+      editingFeedback.id,
+      editingFeedbackText.trim(),
+      editingFeedback.feedback_type,
+      editingFeedback.rating
+    );
+
+    if (updatedFeedback) {
+      setFeedback(feedback.map(f => f.id === editingFeedback.id ? updatedFeedback : f));
+      setEditingFeedback(null);
+      setEditingFeedbackText('');
+    }
+  };
+
+  const handleDeleteFeedback = async (feedbackId: number) => {
+    if (!confirm('Are you sure you want to delete this feedback?')) return;
+
+    const success = await deleteOnboardingFeedback(feedbackId);
+    if (success) {
+      setFeedback(feedback.filter(f => f.id !== feedbackId));
+    }
+  };
+
+  const startEditFeedback = (feedback: OnboardingFeedback) => {
+    setEditingFeedback(feedback);
+    setEditingFeedbackText(feedback.feedback_text);
+  };
+
+
 
   return (
     <div style={{ minHeight: "100vh", background: GRADIENT_BG }}>
@@ -513,14 +708,26 @@ fontSize: 16,
           </span>
             <SignOutButton>
               <button style={{
-                background: COLORS.teal,
+                background: "#264653",
                 color: COLORS.white,
-                border: "none", 
-              padding: "8px 16px",
+                border: "none",
                 borderRadius: 8,
-                                cursor: "pointer",
-                fontWeight: 600
-              }}>
+                padding: "8px 20px",
+                fontWeight: 600,
+                fontSize: 14,
+                cursor: "pointer",
+                transition: "all 0.2s",
+                boxShadow: "0 2px 4px rgba(0,0,0,0.1)"
+              }}
+              onMouseEnter={(e) => {
+                e.currentTarget.style.transform = "translateY(-1px)";
+                e.currentTarget.style.boxShadow = "0 4px 8px rgba(0,0,0,0.15)";
+              }}
+              onMouseLeave={(e) => {
+                e.currentTarget.style.transform = "translateY(0)";
+                e.currentTarget.style.boxShadow = "0 2px 4px rgba(0,0,0,0.1)";
+              }}
+              >
                 Sign Out
               </button>
             </SignOutButton>
@@ -965,7 +1172,7 @@ boxShadow: "0 2px 8px rgba(38,70,83,0.06)",
           borderBottom: `2px solid ${COLORS.gray}`,
             paddingBottom: "1rem"
           }}>
-            {["Overview", "Plan", "Feedback", "Useful Resources"].map((tab) => (
+                            {["Overview", "Plan", "Feedback", "Useful Resources", "Growth"].map((tab) => (
               <button
                 key={tab}
                 onClick={() => setActiveTab(tab)}
@@ -1072,7 +1279,7 @@ boxShadow: "0 2px 8px rgba(38,70,83,0.06)",
                           <strong>Scheduled Progress:</strong> <span style={{ marginLeft: "0.5rem" }}>
                             {(() => {
                               const scheduledProgress = new Date(currentNewHire.start_date) > new Date() 
-                                ? calculateScheduledProgressForFuture(currentNewHire.start_date) 
+                                ? calculateScheduledProgressForFuture(currentNewHire.start_date)
                                 : calculateScheduledProgress(currentNewHire.workdays_since_start);
                               return `${scheduledProgress}/5 milestones`;
                             })()}
@@ -1189,10 +1396,10 @@ boxShadow: "0 2px 8px rgba(38,70,83,0.06)",
                   {/* Compact Task Cards Container */}
                       {!collapsedMilestones.has(milestone.id) && (
                         <div style={{ 
-                          padding: "12px",
+                          padding: "8px",
                           background: COLORS.white
                         }}>
-                          <div style={{ display: "grid", gap: 8 }}>
+                          <div style={{ display: "grid", gap: 6 }}>
                     {milestone.tasks?.map((task: any, taskIdx: number) => {
                               // Calculate actual due date based on milestone and task position
                               const actualDueDate = calculateTaskDueDate(currentNewHire.start_date, milestone.id, taskIdx);
@@ -1233,26 +1440,26 @@ boxShadow: "0 2px 8px rgba(38,70,83,0.06)",
                               })();
                               
                               return (
-                              <div key={`${milestone.id}-task-${taskIdx}`} style={{ 
-                        background: COLORS.white, 
-                        borderRadius: 8, 
-                        padding: 8,
-                                boxShadow: "0 1px 4px rgba(38,70,83,0.06)",
-                                transition: "all 0.2s ease",
-                                cursor: "pointer",
-                                position: "relative",
-                                overflow: "hidden",
-                        borderLeft: `3px solid ${milestone.color}`,
-                                borderTop: `1px solid ${task.status === "completed" ? `${COLORS.successGreen}30` : task.status === "in_progress" ? `${COLORS.warningAmber}30` : task.status === "overdue" ? `${COLORS.errorRed}30` : task.status === "on_hold" ? `${COLORS.yellow}30` : `${COLORS.gray}30`}`,
-                                borderRight: `1px solid ${task.status === "completed" ? `${COLORS.successGreen}30` : task.status === "in_progress" ? `${COLORS.warningAmber}30` : task.status === "overdue" ? `${COLORS.errorRed}30` : task.status === "on_hold" ? `${COLORS.yellow}30` : `${COLORS.gray}30`}`,
-                                borderBottom: `1px solid ${task.status === "completed" ? `${COLORS.successGreen}30` : task.status === "in_progress" ? `${COLORS.warningAmber}30` : task.status === "overdue" ? `${COLORS.errorRed}30` : task.status === "on_hold" ? `${COLORS.yellow}30` : `${COLORS.gray}30`}`
-                              }}>
+                                                           <div key={`${milestone.id}-task-${taskIdx}`} style={{ 
+                               background: COLORS.white, 
+                               borderRadius: 6, 
+                               padding: 6,
+                               boxShadow: "0 1px 3px rgba(38,70,83,0.05)",
+                               transition: "all 0.2s ease",
+                               cursor: "pointer",
+                               position: "relative",
+                               overflow: "hidden",
+                               borderLeft: `3px solid ${milestone.color}`,
+                               borderTop: `1px solid ${task.status === "completed" ? `${COLORS.successGreen}30` : task.status === "in_progress" ? `${COLORS.warningAmber}30` : task.status === "overdue" ? `${COLORS.errorRed}30` : task.status === "on_hold" ? `${COLORS.yellow}30` : `${COLORS.gray}30`}`,
+                               borderRight: `1px solid ${task.status === "completed" ? `${COLORS.successGreen}30` : task.status === "in_progress" ? `${COLORS.warningAmber}30` : task.status === "overdue" ? `${COLORS.errorRed}30` : task.status === "on_hold" ? `${COLORS.yellow}30` : `${COLORS.gray}30`}`,
+                               borderBottom: `1px solid ${task.status === "completed" ? `${COLORS.successGreen}30` : task.status === "in_progress" ? `${COLORS.warningAmber}30` : task.status === "overdue" ? `${COLORS.errorRed}30` : task.status === "on_hold" ? `${COLORS.yellow}30` : `${COLORS.gray}30`}`
+                             }}>
                                 {/* Compact Task Header */}
-                        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 6 }}>
+                        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 4 }}>
                           <div style={{ flex: 1 }}>
                             <div style={{ 
                                       fontWeight: 700, 
-                                      fontSize: 13, 
+                                      fontSize: 15, 
 color: COLORS.darkBlue, 
                                       marginBottom: 2,
                                       textDecoration: task.status === "completed" ? "line-through" : "none",
@@ -1269,10 +1476,10 @@ color: COLORS.darkBlue,
                               onChange={(e) => handleUpdateStatus(task, e.target.value)}
 onClick={(e) => e.stopPropagation()}
                               style={{
-                                padding: "2px 6px",
+                                padding: "4px 8px",
                                 borderRadius: 8,
                                 border: "none",
-                                fontSize: 9,
+                                fontSize: 12,
                                       fontWeight: 600,
                                       textTransform: "uppercase",
                                       cursor: "pointer",
@@ -1295,9 +1502,9 @@ onClick={(e) => e.stopPropagation()}
                                 <div style={{ 
                                   display: "flex", 
                                   alignItems: "center", 
-                                  gap: 12, 
-                                  marginBottom: 6,
-                                  fontSize: 11,
+                                  gap: 6, 
+                                  marginBottom: 4,
+                                  fontSize: 12,
                                   color: COLORS.darkBlue,
                                   opacity: 0.8
                                 }}>
@@ -1310,67 +1517,49 @@ onClick={(e) => e.stopPropagation()}
                                   {/* Department/Tag */}
                                   {task.tags && task.tags.length > 0 && (
                                     <span style={{ 
-                                      padding: "1px 4px", 
-                                      background: `${COLORS.orange}20`, 
-                                      color: COLORS.orange,
-                                      borderRadius: 3,
-                                      fontSize: 9,
-                                      fontWeight: 600
+                                      padding: "2px 6px", 
+                                      background: `${COLORS.orange}40`, 
+                                      color: COLORS.darkBlue,
+                                      borderRadius: 4,
+                                      fontSize: 11,
+                                      fontWeight: 600,
+                                      border: `1px solid ${COLORS.orange}60`
                                     }}>
                                       {task.tags[0]}
                                     </span>
                                   )}
                                 </div>
 
-                                {/* Compact Comments & Attachments */}
-                                <div style={{ 
-                                  display: "flex", 
-                                  alignItems: "center", 
-                                  gap: 10, 
-                                  marginBottom: 6,
-                                  fontSize: 10,
-                                  color: COLORS.darkBlue,
-                                  opacity: 0.7
-                                }}>
-                                  {/* Comments */}
-                                  <span style={{ display: "flex", alignItems: "center", gap: 3 }}>
-                                    💬 {task.comments?.length || 0} comments
-                                  </span>
-                                  
-                                  {/* Attachments */}
-                                  <span style={{ display: "flex", alignItems: "center", gap: 3 }}>
-                                    📎 {task.attachments?.length || 0} files
-                                  </span>
-                                </div>
+
 
                                 {/* Compact Action Buttons */}
                                 <div style={{ 
                                   display: "flex", 
-                                  gap: 6, 
+                                  gap: 4, 
                                   justifyContent: "flex-end",
-                                  paddingTop: 6,
+                                  paddingTop: 2,
                                   borderTop: `1px solid ${COLORS.gray}15`
                                 }}>
-                            <button
-                              onClick={(e) => {
+                                  <button
+                                    onClick={(e) => {
                                       e.stopPropagation();
-handleViewDetails(task);
+                                      handleViewDetails(task);
                                     }}
-                              style={{
-                                background: COLORS.white,
-                                color: COLORS.darkBlue,
-                                border: `1px solid ${COLORS.gray}30`,
-                                borderRadius: 4,
-                                padding: "4px 8px",
-                                fontWeight: 600,
-                                cursor: "pointer",
-                                      fontSize: 10,
+                                    style={{
+                                      background: COLORS.white,
+                                      color: COLORS.darkBlue,
+                                      border: `1px solid ${COLORS.gray}30`,
+                                      borderRadius: 4,
+                                      padding: "3px 6px",
+                                      fontWeight: 600,
+                                      cursor: "pointer",
+                                      fontSize: 12,
                                       transition: "all 0.2s"
-                              }}
-                            >
-                              View
-                            </button>
-                          </div>
+                                    }}
+                                  >
+                                    View
+                                  </button>
+                                </div>
                         </div>
                         );
                           })}
@@ -1414,176 +1603,580 @@ handleViewDetails(task);
 )}
 
             {activeTab === "Feedback" && (
+              <div style={{ display: "flex", flexDirection: "column", gap: "2rem" }}>
+                {/* Feedback Header */}
+                <div style={{ 
+                  display: "flex", 
+                  justifyContent: "space-between", 
+                  alignItems: "center",
+                  background: COLORS.white,
+                  borderRadius: 16,
+                  padding: "1.5rem",
+                  boxShadow: "0 4px 16px rgba(38,70,83,0.08)"
+                }}>
+                  <div>
+                    <h3 style={{ fontSize: 24, fontWeight: 700, color: COLORS.darkBlue, margin: "0 0 0.5rem 0" }}>
+                      Feedback & Reviews
+                    </h3>
+                    <p style={{ fontSize: 16, color: COLORS.textGray, margin: 0 }}>
+                      Share feedback about {currentNewHire?.name}'s onboarding and view feedback from the team
+                    </p>
+                  </div>
+                  <button
+                    onClick={() => setShowAddFeedback(true)}
+                    style={{
+                      background: COLORS.teal,
+                      color: COLORS.white,
+                      border: "none",
+                      borderRadius: 12,
+                      padding: "12px 24px",
+                      fontWeight: 600,
+                      fontSize: 16,
+                      cursor: "pointer",
+                      transition: "all 0.2s",
+                      display: "flex",
+                      alignItems: "center",
+                      gap: 8
+                    }}
+                    onMouseEnter={(e) => {
+                      e.currentTarget.style.transform = "translateY(-2px)";
+                      e.currentTarget.style.boxShadow = "0 6px 16px rgba(42,157,143,0.3)";
+                    }}
+                    onMouseLeave={(e) => {
+                      e.currentTarget.style.transform = "translateY(0)";
+                      e.currentTarget.style.boxShadow = "0 4px 12px rgba(42,157,143,0.2)";
+                    }}
+                  >
+                    ✨ Add Feedback
+                  </button>
+                </div>
+
+                {/* Feedback List */}
+                <div style={{ display: "flex", flexDirection: "column", gap: "1rem" }}>
+                  {feedback.length === 0 ? (
+                    <div style={{ 
+                      textAlign: "center", 
+                      padding: "3rem 2rem", 
+                      background: COLORS.white,
+                      borderRadius: 16,
+                      boxShadow: "0 4px 16px rgba(38,70,83,0.08)"
+                    }}>
+                      <div style={{ fontSize: 48, marginBottom: 16 }}>💬</div>
+                      <div style={{ fontWeight: 700, fontSize: 20, color: COLORS.darkBlue, marginBottom: 8 }}>
+                        No feedback yet
+                      </div>
+                      <div style={{ fontSize: 16, color: COLORS.textGray, marginBottom: 24 }}>
+                        Be the first to share feedback about {currentNewHire?.name}'s onboarding experience
+                      </div>
+                      <button
+                        onClick={() => setShowAddFeedback(true)}
+                        style={{
+                          background: COLORS.teal,
+                          color: COLORS.white,
+                          border: "none",
+                          borderRadius: 8,
+                          padding: "10px 20px",
+                          fontWeight: 600,
+                          fontSize: 14,
+                          cursor: "pointer"
+                        }}
+                      >
+                        Add First Feedback
+                      </button>
+                    </div>
+                  ) : (
+                    feedback.map((item) => (
+                      <div key={item.id} style={{ 
+                        background: COLORS.white,
+                        borderRadius: 16,
+                        padding: "1.5rem",
+                        boxShadow: "0 4px 16px rgba(38,70,83,0.08)",
+                        border: `1px solid ${COLORS.borderGray}`
+                      }}>
+                        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: "1rem" }}>
+                          <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+                            <div style={{ 
+                              fontSize: 24,
+                              background: `${getAuthorRoleColor(item.author_role)}20`,
+                              borderRadius: 12,
+                              padding: 8,
+                              display: "flex",
+                              alignItems: "center",
+                              justifyContent: "center"
+                            }}>
+                              {getFeedbackTypeIcon(item.feedback_type)}
+                            </div>
+                            <div>
+                              <div style={{ fontWeight: 700, fontSize: 16, color: COLORS.darkBlue }}>
+                                {item.author_name}
+                              </div>
+                              <div style={{ fontSize: 14, color: COLORS.textGray }}>
+                                {getFeedbackTypeLabel(item.feedback_type)} • {new Date(item.created_at).toLocaleDateString('en-GB', {
+                                  day: 'numeric',
+                                  month: 'short',
+                                  year: 'numeric',
+                                  hour: '2-digit',
+                                  minute: '2-digit'
+                                })}
+                              </div>
+                            </div>
+                          </div>
+                          <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                            {item.rating && (
+                              <div style={{ 
+                                display: "flex", 
+                                alignItems: "center", 
+                                gap: 4,
+                                background: `${COLORS.yellow}20`,
+                                padding: "4px 8px",
+                                borderRadius: 8
+                              }}>
+                                <span style={{ fontSize: 14 }}>⭐</span>
+                                <span style={{ fontWeight: 600, fontSize: 14, color: COLORS.darkBlue }}>
+                                  {item.rating}/5
+                                </span>
+                              </div>
+                            )}
+                            {item.author_id === user?.id && (
+                              <div style={{ display: "flex", gap: 4 }}>
+                                <button
+                                  onClick={() => startEditFeedback(item)}
+                                  style={{
+                                    background: COLORS.teal,
+                                    color: COLORS.white,
+                                    border: "none",
+                                    borderRadius: 4,
+                                    padding: "4px 8px",
+                                    fontSize: 12,
+                                    fontWeight: 600,
+                                    cursor: "pointer"
+                                  }}
+                                >
+                                  Edit
+                                </button>
+                                <button
+                                  onClick={() => handleDeleteFeedback(item.id)}
+                                  style={{
+                                    background: COLORS.errorRed,
+                                    color: COLORS.white,
+                                    border: "none",
+                                    borderRadius: 4,
+                                    padding: "4px 8px",
+                                    fontSize: 12,
+                                    fontWeight: 600,
+                                    cursor: "pointer"
+                                  }}
+                                >
+                                  Delete
+                                </button>
+                              </div>
+                            )}
+                          </div>
+                        </div>
+                        <div style={{ 
+                          fontSize: 16, 
+                          color: COLORS.darkBlue, 
+                          lineHeight: 1.6,
+                          background: COLORS.lightGray,
+                          padding: "1rem",
+                          borderRadius: 8
+                        }}>
+                          {item.feedback_text}
+                        </div>
+                      </div>
+                    ))
+                  )}
+                </div>
+              </div>
+            )}
+
+            {activeTab === "Growth" && (
               <div>
                 <h3 style={{ fontSize: 24, fontWeight: 700, color: COLORS.darkBlue, marginBottom: "1.5rem" }}>
-                  Feedback & Reviews
+                  Growth & Development
                 </h3>
-                <div style={{ color: COLORS.darkBlue, opacity: 0.7 }}>
-                  Feedback from buddies, managers, and self-assessments will be displayed here.
+                
+                {/* Growth Categories */}
+                <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(300px, 1fr))", gap: "1.5rem" }}>
+                  
+                  {/* Self-Awareness Section */}
+                  <div style={{ 
+                    background: COLORS.white, 
+                    borderRadius: 16, 
+                    padding: "1.5rem",
+                    boxShadow: "0 4px 16px rgba(38,70,83,0.08)",
+                    border: `1px solid ${COLORS.borderGray}`
+                  }}>
+                    <div style={{ display: "flex", alignItems: "center", gap: "12px", marginBottom: "1rem" }}>
+                      <div style={{ 
+                        width: 8, 
+                        height: 32, 
+                        background: COLORS.teal, 
+                        borderRadius: 4 
+                      }} />
+                      <h4 style={{ fontSize: 18, fontWeight: 600, color: COLORS.darkBlue, margin: 0 }}>
+                        Self-Awareness
+                      </h4>
+                    </div>
+                    
+                    {/* Tests & Assessments */}
+                    <div style={{ marginBottom: "1rem" }}>
+                      <h5 style={{ fontSize: 16, fontWeight: 600, color: COLORS.darkBlue, marginBottom: "0.75rem" }}>
+                        Tests & Assessments
+                      </h5>
+                      
+                      {growthTests.length > 0 ? (
+                        <div style={{ display: "flex", flexDirection: "column", gap: "0.5rem" }}>
+                          {growthTests.map((test, idx) => {
+                            const isCompleted = completedTests.some(ct => ct.growth_test_id === test.id);
+                            const completedTest = completedTests.find(ct => ct.growth_test_id === test.id);
+                            
+                            return (
+                              <div key={idx} style={{
+                                background: isCompleted ? `${COLORS.successGreen}10` : COLORS.lightGray,
+                                borderRadius: 8,
+                                padding: "0.75rem",
+                                border: `1px solid ${isCompleted ? COLORS.successGreen : COLORS.borderGray}`
+                              }}>
+                                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                                  <div>
+                                    <div style={{ 
+                                      fontWeight: 600, 
+                                      color: COLORS.darkBlue, 
+                                      fontSize: 14,
+                                      marginBottom: "0.25rem"
+                                    }}>
+                                      {test.name}
+                                    </div>
+                                    <div style={{ 
+                                      fontSize: 12, 
+                                      color: COLORS.textGray 
+                                    }}>
+                                      {test.description}
+                                    </div>
+                                  </div>
+                                  <div style={{ 
+                                    background: isCompleted ? COLORS.successGreen : COLORS.warningAmber,
+                                    color: COLORS.white,
+                                    padding: "4px 8px",
+                                    borderRadius: 12,
+                                    fontSize: 11,
+                                    fontWeight: 600
+                                  }}>
+                                    {isCompleted ? 'Completed' : 'Pending'}
+                                  </div>
+                                </div>
+                                {isCompleted && completedTest && (
+                                  <div style={{ 
+                                    marginTop: "0.5rem", 
+                                    fontSize: 12, 
+                                    color: COLORS.textGray 
+                                  }}>
+                                    <strong>Result:</strong> {completedTest.result_summary}
+                                  </div>
+                                )}
+                              </div>
+                            );
+                          })}
+                        </div>
+                      ) : (
+                        <div style={{ 
+                          textAlign: "center", 
+                          padding: "1rem", 
+                          color: COLORS.textGray,
+                          fontSize: 14
+                        }}>
+                          No tests available
+                        </div>
+                      )}
+                    </div>
+                    
+                    {/* Insights */}
+                    {growthInsights.length > 0 && (
+                      <div>
+                        <h5 style={{ fontSize: 16, fontWeight: 600, color: COLORS.darkBlue, marginBottom: "0.75rem" }}>
+                          AI-Generated Insights
+                        </h5>
+                        <div style={{ display: "flex", flexDirection: "column", gap: "0.5rem" }}>
+                          {growthInsights.slice(0, 2).map((insight, idx) => (
+                            <div key={idx} style={{
+                              background: COLORS.lightGray,
+                              borderRadius: 8,
+                              padding: "0.75rem",
+                              border: `1px solid ${COLORS.borderGray}`
+                            }}>
+                              <div style={{ 
+                                fontWeight: 600, 
+                                color: COLORS.darkBlue, 
+                                fontSize: 13,
+                                marginBottom: "0.25rem"
+                              }}>
+                                {insight.title}
+                              </div>
+                              <div style={{ 
+                                fontSize: 12, 
+                                color: COLORS.textGray 
+                              }}>
+                                {insight.description}
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                  
+                  {/* Goal Setting Section */}
+                  <div style={{ 
+                    background: COLORS.white, 
+                    borderRadius: 16, 
+                    padding: "1.5rem",
+                    boxShadow: "0 4px 16px rgba(38,70,83,0.08)",
+                    border: `1px solid ${COLORS.borderGray}`
+                  }}>
+                    <div style={{ display: "flex", alignItems: "center", gap: "12px", marginBottom: "1rem" }}>
+                      <div style={{ 
+                        width: 8, 
+                        height: 32, 
+                        background: COLORS.yellow, 
+                        borderRadius: 4 
+                      }} />
+                      <h4 style={{ fontSize: 18, fontWeight: 600, color: COLORS.darkBlue, margin: 0 }}>
+                        Goal Setting
+                      </h4>
+                    </div>
+                    
+                    <div style={{ 
+                      textAlign: "center", 
+                      padding: "2rem", 
+                      color: COLORS.textGray,
+                      fontSize: 14
+                    }}>
+                      Goal setting functionality will be available soon.
+                      <br />
+                      <span style={{ fontSize: 12, opacity: 0.7 }}>
+                        Employees can set and track their career goals here.
+                      </span>
+                    </div>
+                  </div>
+                  
+                  {/* Skills Building Section */}
+                  <div style={{ 
+                    background: COLORS.white, 
+                    borderRadius: 16, 
+                    padding: "1.5rem",
+                    boxShadow: "0 4px 16px rgba(38,70,83,0.08)",
+                    border: `1px solid ${COLORS.borderGray}`
+                  }}>
+                    <div style={{ display: "flex", alignItems: "center", gap: "12px", marginBottom: "1rem" }}>
+                      <div style={{ 
+                        width: 8, 
+                        height: 32, 
+                        background: COLORS.orange, 
+                        borderRadius: 4 
+                      }} />
+                      <h4 style={{ fontSize: 18, fontWeight: 600, color: COLORS.darkBlue, margin: 0 }}>
+                        Skills Building
+                      </h4>
+                    </div>
+                    
+                    <div style={{ 
+                      textAlign: "center", 
+                      padding: "2rem", 
+                      color: COLORS.textGray,
+                      fontSize: 14
+                    }}>
+                      Skills building functionality will be available soon.
+                      <br />
+                      <span style={{ fontSize: 12, opacity: 0.7 }}>
+                        Employees can track their skill development here.
+                      </span>
+                    </div>
+                  </div>
+                </div>
+                
+                {/* Summary Stats */}
+                <div style={{ 
+                  background: COLORS.gray, 
+                  borderRadius: 12, 
+                  padding: "1.5rem", 
+                  marginTop: "1.5rem"
+                }}>
+                  <h4 style={{ fontSize: 18, fontWeight: 600, color: COLORS.darkBlue, marginBottom: "1rem" }}>
+                    Growth Summary
+                  </h4>
+                  <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(200px, 1fr))", gap: "1rem" }}>
+                    <div style={{ textAlign: "center" }}>
+                      <div style={{ fontSize: 24, fontWeight: 700, color: COLORS.darkBlue }}>
+                        {growthTests.length}
+                      </div>
+                      <div style={{ fontSize: 14, color: COLORS.textGray }}>
+                        Total Tests Available
+                      </div>
+                    </div>
+                    <div style={{ textAlign: "center" }}>
+                      <div style={{ fontSize: 24, fontWeight: 700, color: COLORS.successGreen }}>
+                        {completedTests.length}
+                      </div>
+                      <div style={{ fontSize: 14, color: COLORS.textGray }}>
+                        Tests Completed
+                      </div>
+                    </div>
+                    <div style={{ textAlign: "center" }}>
+                      <div style={{ fontSize: 24, fontWeight: 700, color: COLORS.warningAmber }}>
+                        {growthTests.length - completedTests.length}
+                      </div>
+                      <div style={{ fontSize: 14, color: COLORS.textGray }}>
+                        Tests Pending
+                      </div>
+                    </div>
+                    <div style={{ textAlign: "center" }}>
+                      <div style={{ fontSize: 24, fontWeight: 700, color: COLORS.teal }}>
+                        {growthInsights.length}
+                      </div>
+                      <div style={{ fontSize: 14, color: COLORS.textGray }}>
+                        AI Insights Generated
+                      </div>
+                    </div>
+                  </div>
                 </div>
               </div>
             )}
 
             {activeTab === "Useful Resources" && (
               <div>
-                <h3 style={{ fontSize: 24, fontWeight: 700, color: COLORS.darkBlue, marginBottom: "1.5rem" }}>
+                <h3 style={{ fontSize: 24, fontWeight: 700, color: COLORS.darkBlue, marginBottom: "1rem" }}>
                   Useful Resources
                 </h3>
+
                 
-                <div style={{ display: "grid", gap: "1rem" }}>
-                  {/* Company Resources */}
-        <div style={{ 
-          background: COLORS.white, 
-          borderRadius: 12, 
-          padding: "1.5rem",
-          boxShadow: "0 2px 8px rgba(0,0,0,0.1)",
-          border: `1px solid ${COLORS.borderGray}`
-        }}>
-          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "1rem" }}>
-            <h4 style={{ fontSize: 18, fontWeight: 600, color: COLORS.darkBlue, margin: 0 }}>
-              Company Resources
-            </h4>
-            <button 
-              onClick={() => setShowAddResource(true)}
-              style={{
-                background: COLORS.teal,
-                color: COLORS.white,
-                border: "none",
-                borderRadius: 6,
-                padding: "4px 8px",
-fontSize: 14,
-                fontWeight: 600,
-cursor: "pointer"
-                        }}
-                      >
-                        +
-                      </button>
-                    </div>
-                    <div style={{ display: "flex", flexDirection: "column", gap: "0.5rem" }}>
-                      {resources.filter(r => r.category === 'Company resource').map((resource) => (
-                        <div key={resource.id} style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-                          <a 
-                            href={resource.type === 'link' ? resource.url : '#'} 
-                            target={resource.type === 'link' ? "_blank" : undefined}
-                            rel={resource.type === 'link' ? "noopener noreferrer" : undefined}
-                            style={{ 
-                              color: COLORS.teal, 
-                              textDecoration: "none",
-                              padding: "0.5rem",
-                              borderRadius: 6,
-                              background: `${COLORS.teal}10`,
-                              transition: "all 0.2s",
-                              flex: 1,
-                              display: "flex",
-                              alignItems: "center",
-                              gap: 8
-                            }}
-                          >
-                            {getResourceIcon(resource.type)} {resource.title}
-                          </a>
+                              {(() => {
+                // Get unique categories that have resources
+                const categoriesWithResources = [...new Set(resources.map(r => r.category))];
+                
+                if (categoriesWithResources.length === 0) {
+                  return null; // Don't show anything if no resources
+                }
+                
+                return (
+                  <div style={{ display: "grid", gap: "1rem" }}>
+                    {categoriesWithResources.map((category) => (
+                      <div key={category} style={{ 
+                        background: COLORS.white, 
+                        borderRadius: 12, 
+                        padding: "1.5rem",
+                        boxShadow: "0 2px 8px rgba(0,0,0,0.1)",
+                        border: `1px solid ${COLORS.borderGray}`
+                      }}>
+                        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "1rem" }}>
+                          <h4 style={{ fontSize: 18, fontWeight: 600, color: COLORS.darkBlue, margin: 0 }}>
+                            {category}
+                          </h4>
                           <button 
-                            onClick={() => setEditingResource(resource)}
+                            onClick={() => setShowAddResource(true)}
                             style={{
-                              background: "none",
+                              background: COLORS.teal,
+                              color: COLORS.white,
                               border: "none",
-                              color: COLORS.darkBlue,
-                              fontSize: 12,
-                cursor: "pointer",
-                padding: "0.25rem 0.5rem",
-                              marginLeft: "0.5rem"
-              }}
-            >
-              Edit
-            </button>
-</div>
-                      ))}
-                      {resources.filter(r => r.category === 'Company Resources').length === 0 && (
-                        <div style={{ color: COLORS.textGray, fontSize: 14, fontStyle: 'italic' }}>
-                          No company resources available.
-                        </div>
-                      )}
-                    </div>
-          </div>
-          
-          {/* IT Resources */}
-                  <div style={{ 
-                    background: COLORS.white, 
-                    borderRadius: 12, 
-                    padding: "1.5rem",
-boxShadow: "0 2px 8px rgba(0,0,0,0.1)",
-                    border: `1px solid ${COLORS.borderGray}`
-                  }}>
-<div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "1rem" }}>
-                    <h4 style={{ fontSize: 18, fontWeight: 600, color: COLORS.darkBlue, margin: 0 }}>
-                      IT Resources
-                    </h4>
-<button 
-                        onClick={() => setShowAddResource(true)}
-                        style={{
-                          background: COLORS.teal,
-                          color: COLORS.white,
-                          border: "none",
-                          borderRadius: 6,
-                          padding: "4px 8px",
-                          fontSize: 14,
-                          fontWeight: 600,
-                          cursor: "pointer"
-                        }}
-                      >
-                        +
-                      </button>
-                    </div>
-                    <div style={{ display: "flex", flexDirection: "column", gap: "0.5rem" }}>
-                      {resources.filter(r => r.category === 'IT Resources').map((resource) => (
-                        <div key={resource.id} style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-                          <a 
-                            href={resource.type === 'link' ? resource.url : '#'} 
-                            target={resource.type === 'link' ? "_blank" : undefined}
-                            rel={resource.type === 'link' ? "noopener noreferrer" : undefined}
-                            style={{ 
-                              color: COLORS.teal, 
-                              textDecoration: "none",
-                              padding: "0.5rem",
                               borderRadius: 6,
-                              background: `${COLORS.teal}10`,
-                              transition: "all 0.2s",
-                              flex: 1,
-                              display: "flex",
-                              alignItems: "center",
-                              gap: 8
+                              padding: "4px 8px",
+                              fontSize: 14,
+                              fontWeight: 600,
+                              cursor: "pointer"
                             }}
                           >
-                            {getResourceIcon(resource.type)} {resource.title}
-                          </a>
-                          <button 
-                            onClick={() => setEditingResource(resource)}
-                            style={{
-                              background: "none",
-                              border: "none",
-                              color: COLORS.darkBlue,
-                              fontSize: 12,
-                              cursor: "pointer",
-                              padding: "0.25rem 0.5rem",
-                              marginLeft: "0.5rem"
-                            }}
-                          >
-                            Edit
+                            +
                           </button>
                         </div>
-                      ))}
-{resources.filter(r => r.category === 'IT Resources').length === 0 && (
-                        <div style={{ color: COLORS.textGray, fontSize: 14, fontStyle: 'italic' }}>
-                          No IT resources available.
-                    </div>
-)}
+                        <div style={{ display: "flex", flexDirection: "column", gap: "0.5rem" }}>
+                          {resources.filter(r => r.category === category).map((resource) => {
+                            const isAccessibleToEmployee = resource.accessible_to === 'all' || 
+                              (Array.isArray(resource.accessible_employees) && resource.accessible_employees.includes(currentNewHire?.id || 0));
+                            
+                            console.log('Resource:', resource.title, 'Employee ID:', currentNewHire?.id, 'Accessible employees:', resource.accessible_employees, 'Is accessible:', isAccessibleToEmployee);
+                            
+                            return (
+                              <div key={resource.id} style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                                <a 
+                                  href={resource.type === 'link' ? resource.url : resource.type === 'file' ? `/api/resources/${resource.id}/download` : '#'} 
+                                  target={resource.type === 'link' ? "_blank" : resource.type === 'file' ? "_blank" : undefined}
+                                  rel={resource.type === 'link' ? "noopener noreferrer" : resource.type === 'file' ? "noopener noreferrer" : undefined}
+                                  style={{ 
+                                    color: isAccessibleToEmployee ? COLORS.teal : COLORS.darkBlue, 
+                                    textDecoration: "none",
+                                    padding: "0.5rem",
+                                    borderRadius: 6,
+                                    background: isAccessibleToEmployee ? `${COLORS.teal}10` : `${COLORS.gray}20`,
+                                    transition: "all 0.2s",
+                                    flex: 1,
+                                    display: "flex",
+                                    alignItems: "center",
+                                    gap: 8,
+                                    opacity: isAccessibleToEmployee ? 1 : 0.8
+                                  }}
+                                >
+                                  {getResourceIcon(resource.type)} {resource.title}
+                                  {resource.type === 'file' && isAccessibleToEmployee && (
+                                    <span style={{ fontSize: 10, opacity: 0.7 }}>(Download)</span>
+                                  )}
+                                  {!isAccessibleToEmployee && (
+                                    <span style={{ 
+                                      fontSize: 12, 
+                                      background: COLORS.errorRed, 
+                                      color: COLORS.white, 
+                                      padding: "4px 8px", 
+                                      borderRadius: 6,
+                                      marginLeft: "auto",
+                                      fontWeight: "bold",
+                                      textTransform: "uppercase",
+                                      letterSpacing: "0.5px"
+                                    }}>
+                                      No Access
+                                    </span>
+                                  )}
+                                </a>
+                                <div style={{ display: "flex", gap: "0.25rem" }}>
+                                  <button 
+                                    onClick={() => setEditingResource(resource)}
+                                    style={{
+                                      background: "none",
+                                      border: "none",
+                                      color: COLORS.darkBlue,
+                                      fontSize: 12,
+                                      cursor: "pointer",
+                                      padding: "0.25rem 0.5rem"
+                                    }}
+                                  >
+                                    Edit
+                                  </button>
+                                  <button 
+                                    onClick={() => handleDeleteResource(resource.id)}
+                                    style={{
+                                      background: "none",
+                                      border: "none",
+                                      color: COLORS.errorRed,
+                                      fontSize: 12,
+                                      cursor: "pointer",
+                                      padding: "0.25rem 0.5rem"
+                                    }}
+                                  >
+                                    Delete
+                                  </button>
+                                </div>
+                              </div>
+                            );
+                          })}
+                        </div>
+                      </div>
+                    ))}
                   </div>
-                </div>
-                </div>
-              </div>
-            )}
-          </div>
+                );
+              })()}
+            </div>
+          )}
         </div>
-      </main>
+      </div>
+    </main>
 
       {/* Add/Edit Resource Modal */}
       {(showAddResource || editingResource) && (
@@ -1654,15 +2247,315 @@ boxShadow: "0 2px 8px rgba(0,0,0,0.1)",
           </div>
         </div>
       )}
+
+      {/* Add Feedback Modal */}
+      {showAddFeedback && (
+        <div style={{
+          position: "fixed",
+          top: 0,
+          left: 0,
+          right: 0,
+          bottom: 0,
+          background: "rgba(0,0,0,0.5)",
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "center",
+          zIndex: 1000,
+          padding: "2rem"
+        }}>
+          <div style={{
+            background: COLORS.white,
+            borderRadius: 20,
+            padding: "2rem",
+            maxWidth: 600,
+            width: "100%",
+            maxHeight: "90vh",
+            overflow: "auto",
+            boxShadow: "0 20px 60px rgba(0,0,0,0.3)"
+          }}>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "1.5rem" }}>
+              <h2 style={{ fontSize: 24, fontWeight: 700, color: COLORS.darkBlue, margin: 0 }}>
+                Add Feedback
+              </h2>
+              <button
+                onClick={() => setShowAddFeedback(false)}
+                style={{
+                  background: "none",
+                  border: "none",
+                  fontSize: 24,
+                  cursor: "pointer",
+                  color: COLORS.textGray,
+                  padding: 4
+                }}
+              >
+                ×
+              </button>
+            </div>
+
+            <form onSubmit={(e) => { e.preventDefault(); handleAddFeedback(); }}>
+              <div style={{ marginBottom: "1.5rem" }}>
+                <label style={{ display: "block", fontWeight: 600, color: COLORS.darkBlue, marginBottom: "0.5rem" }}>
+                  Feedback Type
+                </label>
+                <select
+                  value={newFeedback.feedbackType}
+                  onChange={(e) => setNewFeedback({ ...newFeedback, feedbackType: e.target.value as any })}
+                  style={{
+                    width: "100%",
+                    padding: "12px",
+                    borderRadius: 8,
+                    border: `1px solid ${COLORS.borderGray}`,
+                    fontSize: 16,
+                    background: COLORS.white,
+                    color: COLORS.darkBlue
+                  }}
+                >
+                  <option value="general">General Feedback</option>
+                  <option value="milestone">Milestone Feedback</option>
+                  <option value="task">Task Feedback</option>
+                  <option value="self_assessment">Self Assessment</option>
+                </select>
+              </div>
+
+              <div style={{ marginBottom: "1.5rem" }}>
+                <label style={{ display: "block", fontWeight: 600, color: COLORS.darkBlue, marginBottom: "0.5rem" }}>
+                  Rating (Optional)
+                </label>
+                <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+                  {[1, 2, 3, 4, 5].map((star) => (
+                    <button
+                      key={star}
+                      type="button"
+                      onClick={() => setNewFeedback({ ...newFeedback, rating: star })}
+                      style={{
+                        background: "none",
+                        border: "none",
+                        fontSize: 24,
+                        cursor: "pointer",
+                        color: newFeedback.rating >= star ? COLORS.yellow : COLORS.borderGray,
+                        transition: "color 0.2s"
+                      }}
+                    >
+                      ⭐
+                    </button>
+                  ))}
+                  {newFeedback.rating > 0 && (
+                    <span style={{ 
+                      marginLeft: 12, 
+                      fontSize: 16, 
+                      fontWeight: 600, 
+                      color: COLORS.darkBlue,
+                      background: COLORS.lightGray,
+                      padding: "4px 8px",
+                      borderRadius: 6
+                    }}>
+                      {newFeedback.rating}/5 stars
+                    </span>
+                  )}
+                </div>
+              </div>
+
+              <div style={{ marginBottom: "1.5rem" }}>
+                <label style={{ display: "block", fontWeight: 600, color: COLORS.darkBlue, marginBottom: "0.5rem" }}>
+                  Feedback
+                </label>
+                <textarea
+                  value={newFeedback.feedbackText}
+                  onChange={(e) => setNewFeedback({ ...newFeedback, feedbackText: e.target.value })}
+                  placeholder="Share your thoughts about the onboarding experience..."
+                  style={{
+                    width: "100%",
+                    minHeight: 120,
+                    padding: "12px",
+                    borderRadius: 8,
+                    border: `1px solid ${COLORS.borderGray}`,
+                    fontSize: 16,
+                    fontFamily: "inherit",
+                    resize: "vertical",
+                    background: COLORS.white,
+                    color: COLORS.darkBlue
+                  }}
+                  required
+                />
+              </div>
+
+              <div style={{ display: "flex", gap: 12, justifyContent: "flex-end" }}>
+                <button
+                  type="button"
+                  onClick={() => setShowAddFeedback(false)}
+                  style={{
+                    background: COLORS.lightGray,
+                    color: COLORS.darkBlue,
+                    border: "none",
+                    borderRadius: 8,
+                    padding: "12px 24px",
+                    fontWeight: 600,
+                    fontSize: 16,
+                    cursor: "pointer"
+                  }}
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  style={{
+                    background: COLORS.teal,
+                    color: COLORS.white,
+                    border: "none",
+                    borderRadius: 8,
+                    padding: "12px 24px",
+                    fontWeight: 600,
+                    fontSize: 16,
+                    cursor: "pointer",
+                    transition: "all 0.2s"
+                  }}
+                  onMouseEnter={(e) => {
+                    e.currentTarget.style.background = COLORS.darkBlue;
+                  }}
+                  onMouseLeave={(e) => {
+                    e.currentTarget.style.background = COLORS.teal;
+                  }}
+                >
+                  Add Feedback
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* Edit Feedback Modal */}
+      {editingFeedback && (
+        <div style={{
+          position: "fixed",
+          top: 0,
+          left: 0,
+          right: 0,
+          bottom: 0,
+          background: "rgba(0,0,0,0.5)",
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "center",
+          zIndex: 1000,
+          padding: "2rem"
+        }}>
+          <div style={{
+            background: COLORS.white,
+            borderRadius: 20,
+            padding: "2rem",
+            maxWidth: 600,
+            width: "100%",
+            maxHeight: "90vh",
+            overflow: "auto",
+            boxShadow: "0 20px 60px rgba(0,0,0,0.3)"
+          }}>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "1.5rem" }}>
+              <h2 style={{ fontSize: 24, fontWeight: 700, color: COLORS.darkBlue, margin: 0 }}>
+                Edit Feedback
+              </h2>
+              <button
+                onClick={() => {
+                  setEditingFeedback(null);
+                  setEditingFeedbackText('');
+                }}
+                style={{
+                  background: "none",
+                  border: "none",
+                  fontSize: 24,
+                  cursor: "pointer",
+                  color: COLORS.textGray,
+                  padding: 4
+                }}
+              >
+                ×
+              </button>
+            </div>
+
+            <form onSubmit={(e) => { e.preventDefault(); handleEditFeedback(); }}>
+              <div style={{ marginBottom: "1.5rem" }}>
+                <label style={{ display: "block", fontWeight: 600, color: COLORS.darkBlue, marginBottom: "0.5rem" }}>
+                  Feedback
+                </label>
+                <textarea
+                  value={editingFeedbackText}
+                  onChange={(e) => setEditingFeedbackText(e.target.value)}
+                  placeholder="Share your thoughts about the onboarding experience..."
+                  style={{
+                    width: "100%",
+                    minHeight: 120,
+                    padding: "12px",
+                    borderRadius: 8,
+                    border: `1px solid ${COLORS.borderGray}`,
+                    fontSize: 16,
+                    fontFamily: "inherit",
+                    resize: "vertical",
+                    background: COLORS.white,
+                    color: COLORS.darkBlue
+                  }}
+                  required
+                />
+              </div>
+
+              <div style={{ display: "flex", gap: 12, justifyContent: "flex-end" }}>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setEditingFeedback(null);
+                    setEditingFeedbackText('');
+                  }}
+                  style={{
+                    background: COLORS.lightGray,
+                    color: COLORS.darkBlue,
+                    border: "none",
+                    borderRadius: 8,
+                    padding: "12px 24px",
+                    fontWeight: 600,
+                    fontSize: 16,
+                    cursor: "pointer"
+                  }}
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  style={{
+                    background: COLORS.teal,
+                    color: COLORS.white,
+                    border: "none",
+                    borderRadius: 8,
+                    padding: "12px 24px",
+                    fontWeight: 600,
+                    fontSize: 16,
+                    cursor: "pointer",
+                    transition: "all 0.2s"
+                  }}
+                  onMouseEnter={(e) => {
+                    e.currentTarget.style.background = COLORS.darkBlue;
+                  }}
+                  onMouseLeave={(e) => {
+                    e.currentTarget.style.background = COLORS.teal;
+                  }}
+                >
+                  Update Feedback
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+
     </div>
   );
 }
+
+
 
 // Resource Form Component
 function ResourceForm({ 
   resource, 
   onSubmit, 
-  onCancel,
+  onCancel, 
   employees 
 }: { 
   resource: any; 
@@ -1681,23 +2574,52 @@ function ResourceForm({
     accessible_employees: resource?.accessible_employees || []
   });
 
-  const handleSubmit = (e: React.FormEvent) => {
-              e.preventDefault();
-              
-              const resourceData = {
-                title: formData.title,
-                description: formData.description,
-                type: formData.type as 'link' | 'file',
-                url: formData.type === 'link' ? formData.url : undefined,
-                file_path: formData.type === 'file' ? formData.file_path : undefined,
-                category: formData.category,
-                accessible_to: formData.accessible_to as 'all' | 'specific',
-                accessible_employees: formData.accessible_to === 'all' ? [] : formData.accessible_employees,
-                created_by: 'Manager' // This would come from the current user
+  const [selectedFile, setSelectedFile] = useState<File | null>(null);
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    
+    let finalFilePath = formData.file_path;
+    
+    // If it's a file upload and we have a selected file, upload it first
+    if (formData.type === 'file' && selectedFile) {
+      try {
+        const formDataToUpload = new FormData();
+        formDataToUpload.append('file', selectedFile);
+        formDataToUpload.append('title', formData.title);
+        
+        const uploadResponse = await fetch('/api/resources/upload', {
+          method: 'POST',
+          body: formDataToUpload
+        });
+        
+        if (!uploadResponse.ok) {
+          throw new Error('File upload failed');
+        }
+        
+        const uploadResult = await uploadResponse.json();
+        finalFilePath = uploadResult.file_path;
+      } catch (error) {
+        console.error('Error uploading file:', error);
+        alert('Failed to upload file. Please try again.');
+        return;
+      }
+    }
+    
+    const resourceData = {
+      title: formData.title,
+      description: formData.description,
+      type: formData.type as 'link' | 'file',
+      url: formData.type === 'link' ? formData.url : undefined,
+      file_path: formData.type === 'file' ? finalFilePath : undefined,
+      category: formData.category,
+      accessible_to: formData.accessible_to as 'all' | 'specific',
+      accessible_employees: formData.accessible_to === 'all' ? [] : formData.accessible_employees,
+      created_by: 'Manager' // This would come from the current user
     };
 
     onSubmit(resourceData);
-              };
+  };
 
   return (
     <form onSubmit={handleSubmit} style={{ display: "flex", flexDirection: "column", gap: "20px" }}>
@@ -1800,6 +2722,7 @@ function ResourceForm({
             onChange={(e) => {
               const file = e.target.files?.[0];
               if (file) {
+                setSelectedFile(file);
                 setFormData(prev => ({ 
                   ...prev, 
                   file_path: file.name 

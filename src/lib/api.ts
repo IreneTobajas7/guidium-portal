@@ -111,18 +111,35 @@ export async function fetchBuddies(): Promise<Buddy[]> {
 // Fetch all resources (optionally filter for employee access)
 export async function fetchResources(employeeId?: number): Promise<Resource[]> {
   try {
+    console.log('fetchResources - Making API call to /api/resources');
+    
     const response = await fetch('/api/resources', {
       method: 'GET',
       headers: { 'Content-Type': 'application/json' },
       credentials: 'include',
     });
-    if (!response.ok) throw new Error('Failed to fetch resources');
+    
+    console.log('fetchResources - Response status:', response.status, 'Response ok:', response.ok);
+    
+    if (!response.ok) {
+      const errorText = await response.text();
+      console.error('fetchResources - Response not ok. Status:', response.status, 'Error:', errorText);
+      throw new Error(`Failed to fetch resources: ${response.status} ${errorText}`);
+    }
+    
     let resources: Resource[] = await response.json();
     
+    console.log('fetchResources - All resources:', resources);
+    console.log('fetchResources - Employee ID:', employeeId, 'Type:', typeof employeeId);
+    
     if (employeeId !== undefined) {
-      resources = resources.filter(r =>
-        r.accessible_to === 'all' || (Array.isArray(r.accessible_employees) && r.accessible_employees.includes(employeeId))
-      );
+      const filteredResources = resources.filter(r => {
+        const isAccessible = r.accessible_to === 'all' || (Array.isArray(r.accessible_employees) && r.accessible_employees.includes(employeeId));
+        console.log(`Resource "${r.title}": accessible_to=${r.accessible_to}, accessible_employees=${JSON.stringify(r.accessible_employees)}, isAccessible=${isAccessible}`);
+        return isAccessible;
+      });
+      console.log('fetchResources - Filtered resources:', filteredResources);
+      return filteredResources;
     }
     return resources;
   } catch (error) {
@@ -452,4 +469,384 @@ export function getInitials(name: string): string {
     .join('')
     .toUpperCase()
     .slice(0, 2);
+}
+
+export interface TaskComment {
+  id: number;
+  task_id: string;
+  new_hire_id: number;
+  author_name: string;
+  author_email: string;
+  comment_text: string;
+  created_at: string;
+  updated_at: string;
+}
+
+// Fetch comments for a specific task
+export async function fetchTaskComments(taskId: string, newHireId: number): Promise<TaskComment[]> {
+  try {
+    const response = await fetch(`/api/comments?taskId=${encodeURIComponent(taskId)}&newHireId=${newHireId}`, {
+      method: 'GET',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      credentials: 'include',
+    });
+    if (!response.ok) {
+      throw new Error('Failed to fetch comments');
+    }
+    const data = await response.json();
+    return data.comments || [];
+  } catch (error) {
+    console.error('Error fetching comments:', error);
+    // Fallback to in-memory store if API fails
+    try {
+      const { fetchTaskComments: fetchFromStore } = await import('./commentsStore');
+      return await fetchFromStore(taskId, newHireId);
+    } catch (fallbackError) {
+      console.error('Error with fallback to in-memory store:', fallbackError);
+      return [];
+    }
+  }
+}
+
+// Add a comment to a task
+export async function addTaskComment(
+  taskId: string, 
+  newHireId: number, 
+  authorName: string, 
+  authorEmail: string, 
+  commentText: string
+): Promise<TaskComment | null> {
+  try {
+    const response = await fetch('/api/comments', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      credentials: 'include',
+      body: JSON.stringify({
+        taskId,
+        newHireId,
+        authorName,
+        authorEmail,
+        commentText
+      }),
+    });
+    if (!response.ok) {
+      throw new Error('Failed to add comment');
+    }
+    const data = await response.json();
+    return data.comment;
+  } catch (error) {
+    console.error('Error adding comment:', error);
+    // Fallback to in-memory store if API fails
+    try {
+      const { addTaskComment: addToStore } = await import('./commentsStore');
+      return await addToStore(taskId, newHireId, authorName, authorEmail, commentText);
+    } catch (fallbackError) {
+      console.error('Error with fallback to in-memory store:', fallbackError);
+      return null;
+    }
+  }
+}
+
+// Update a comment
+export async function updateTaskComment(
+  commentId: number,
+  commentText: string
+): Promise<TaskComment | null> {
+  try {
+    const response = await fetch('/api/comments', {
+      method: 'PUT',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      credentials: 'include',
+      body: JSON.stringify({
+        commentId,
+        commentText
+      }),
+    });
+    if (!response.ok) {
+      throw new Error('Failed to update comment');
+    }
+    const data = await response.json();
+    return data.comment;
+  } catch (error) {
+    console.error('Error updating comment:', error);
+    return null;
+  }
+}
+
+// Delete a comment
+export async function deleteTaskComment(commentId: number): Promise<boolean> {
+  try {
+    const response = await fetch(`/api/comments?commentId=${commentId}`, {
+      method: 'DELETE',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      credentials: 'include',
+    });
+    if (!response.ok) {
+      throw new Error('Failed to delete comment');
+    }
+    return true;
+  } catch (error) {
+    console.error('Error deleting comment:', error);
+    return false;
+  }
+}
+
+// Growth API functions
+export async function getGrowthTests(newHireId?: number): Promise<any> {
+  try {
+    const url = newHireId ? `/api/growth/tests?newHireId=${newHireId}` : '/api/growth/tests';
+    const response = await fetch(url, {
+      method: 'GET',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      credentials: 'include',
+    });
+    if (!response.ok) {
+      throw new Error('Failed to fetch growth tests');
+    }
+    return await response.json();
+  } catch (error) {
+    console.error('Error fetching growth tests:', error);
+    return { tests: [], completedTests: [] };
+  }
+}
+
+export async function submitTestResult(
+  newHireId: number,
+  testId: number,
+  answers: any,
+  resultSummary: string,
+  insights: string[] = []
+): Promise<any> {
+  try {
+    const response = await fetch('/api/growth/tests', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      credentials: 'include',
+      body: JSON.stringify({
+        newHireId,
+        testId,
+        answers,
+        resultSummary,
+        insights
+      }),
+    });
+    if (!response.ok) {
+      throw new Error('Failed to submit test result');
+    }
+    return await response.json();
+  } catch (error) {
+    console.error('Error submitting test result:', error);
+    return null;
+  }
+}
+
+export async function getGrowthInsights(newHireId: number): Promise<any> {
+  try {
+    const response = await fetch(`/api/growth/insights?newHireId=${newHireId}`, {
+      method: 'GET',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      credentials: 'include',
+    });
+    if (!response.ok) {
+      throw new Error('Failed to fetch growth insights');
+    }
+    return await response.json();
+  } catch (error) {
+    console.error('Error fetching growth insights:', error);
+    return { insights: [], additionalInsights: [], testResults: [] };
+  }
+}
+
+export async function generateInsight(
+  newHireId: number,
+  insightType: string,
+  prompt?: string
+): Promise<any> {
+  try {
+    const response = await fetch('/api/growth/insights', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      credentials: 'include',
+      body: JSON.stringify({
+        newHireId,
+        insightType,
+        prompt
+      }),
+    });
+    if (!response.ok) {
+      throw new Error('Failed to generate insight');
+    }
+    return await response.json();
+  } catch (error) {
+    console.error('Error generating insight:', error);
+    return null;
+  }
+}
+
+// Get comment count for a specific task
+export async function getTaskCommentCount(taskId: string, newHireId: number): Promise<number> {
+  try {
+    const response = await fetch(`/api/comments?taskId=${encodeURIComponent(taskId)}&newHireId=${newHireId}`, {
+      method: 'GET',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      credentials: 'include',
+    });
+    if (!response.ok) {
+      throw new Error('Failed to fetch comment count');
+    }
+    const data = await response.json();
+    return data.comments?.length || 0;
+  } catch (error) {
+    console.error('Error fetching comment count:', error);
+    return 0;
+  }
+}
+
+// Feedback interfaces and functions
+export interface OnboardingFeedback {
+  id: number;
+  new_hire_id: number;
+  author_id: string;
+  author_name: string;
+  author_role: 'employee' | 'manager' | 'buddy';
+  feedback_type: 'general' | 'milestone' | 'task' | 'self_assessment';
+  feedback_text: string;
+  rating?: number;
+  milestone_id?: string;
+  task_id?: string;
+  created_at: string;
+  updated_at: string;
+}
+
+// Fetch feedback for a specific new hire
+export async function fetchOnboardingFeedback(newHireId: number): Promise<OnboardingFeedback[]> {
+  try {
+    const response = await fetch(`/api/feedback?newHireId=${newHireId}`, {
+      method: 'GET',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      credentials: 'include',
+    });
+    if (!response.ok) {
+      throw new Error('Failed to fetch feedback');
+    }
+    const data = await response.json();
+    return data.feedback || [];
+  } catch (error) {
+    console.error('Error fetching feedback:', error);
+    return [];
+  }
+}
+
+// Add feedback for a new hire
+export async function addOnboardingFeedback(
+  newHireId: number,
+  authorId: string,
+  authorName: string,
+  authorRole: 'employee' | 'manager' | 'buddy',
+  feedbackType: 'general' | 'milestone' | 'task' | 'self_assessment',
+  feedbackText: string,
+  rating?: number,
+  milestoneId?: string,
+  taskId?: string
+): Promise<OnboardingFeedback | null> {
+  try {
+    const response = await fetch('/api/feedback', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      credentials: 'include',
+      body: JSON.stringify({
+        newHireId,
+        authorId,
+        authorName,
+        authorRole,
+        feedbackType,
+        feedbackText,
+        rating,
+        milestoneId,
+        taskId
+      }),
+    });
+    if (!response.ok) {
+      throw new Error('Failed to add feedback');
+    }
+    const data = await response.json();
+    return data.feedback;
+  } catch (error) {
+    console.error('Error adding feedback:', error);
+    return null;
+  }
+}
+
+// Update feedback
+export async function updateOnboardingFeedback(
+  feedbackId: number,
+  feedbackText: string,
+  feedbackType: 'general' | 'milestone' | 'task' | 'self_assessment',
+  rating?: number
+): Promise<OnboardingFeedback | null> {
+  try {
+    const response = await fetch('/api/feedback', {
+      method: 'PUT',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      credentials: 'include',
+      body: JSON.stringify({
+        feedbackId,
+        feedbackText,
+        feedbackType,
+        rating
+      }),
+    });
+    if (!response.ok) {
+      throw new Error('Failed to update feedback');
+    }
+    const data = await response.json();
+    return data.feedback;
+  } catch (error) {
+    console.error('Error updating feedback:', error);
+    return null;
+  }
+}
+
+// Delete feedback
+export async function deleteOnboardingFeedback(feedbackId: number): Promise<boolean> {
+  try {
+    const response = await fetch(`/api/feedback?feedbackId=${feedbackId}`, {
+      method: 'DELETE',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      credentials: 'include',
+    });
+    if (!response.ok) {
+      throw new Error('Failed to delete feedback');
+    }
+    return true;
+  } catch (error) {
+    console.error('Error deleting feedback:', error);
+    return false;
+  }
 } 

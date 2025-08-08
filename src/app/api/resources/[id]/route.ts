@@ -8,8 +8,8 @@ const supabase = createClient(
 );
 
 // GET: Get a single resource by id
-export async function GET(req: NextRequest, { params }: { params: { id: string } }) {
-  const { id } = params;
+export async function GET(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
+  const { id } = await params;
   const { data, error } = await supabase
     .schema('api')
     .from('resources')
@@ -24,8 +24,8 @@ export async function GET(req: NextRequest, { params }: { params: { id: string }
 }
 
 // PUT: Update a resource by id
-export async function PUT(req: NextRequest, { params }: { params: { id: string } }) {
-  const { id } = params;
+export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
+  const { id } = await params;
   const body = await req.json();
   const { data, error } = await supabase
     .schema('api')
@@ -41,8 +41,8 @@ export async function PUT(req: NextRequest, { params }: { params: { id: string }
 }
 
 // DELETE: Delete a resource by id
-export async function DELETE(req: NextRequest, { params }: { params: { id: string } }) {
-  const { id } = params;
+export async function DELETE(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
+  const { id } = await params;
   const { error } = await supabase
     .schema('api')
     .from('resources')
