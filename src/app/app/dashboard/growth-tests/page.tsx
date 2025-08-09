@@ -22,13 +22,26 @@ const COLORS = {
   errorRed: "#EF4444"
 };
 
+interface GrowthTest {
+  id: string;
+  name: string;
+  description: string;
+  category: string;
+  estimated_duration: number;
+  isCompleted?: boolean;
+  completedResult?: any;
+  questions?: {
+    questions: any[];
+  };
+}
+
 export default function GrowthTestsPage() {
   const { user, isLoaded } = useUser();
   const router = useRouter();
-  const [tests, setTests] = useState([]);
-  const [currentTest, setCurrentTest] = useState(null);
+  const [tests, setTests] = useState<GrowthTest[]>([]);
+  const [currentTest, setCurrentTest] = useState<GrowthTest | null>(null);
   const [currentQuestionIndex, setCurrentQuestionIndex] = useState(0);
-  const [answers, setAnswers] = useState({});
+  const [answers, setAnswers] = useState<Record<string, any>>({});
   const [isLoading, setIsLoading] = useState(true);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [showResults, setShowResults] = useState(false);
@@ -43,22 +56,27 @@ export default function GrowthTestsPage() {
     try {
       setIsLoading(true);
       const response = await getGrowthTests();
-      setTests(response.tests || []);
+      if (response) {
+        setTests(response.tests || []);
+      } else {
+        setTests([]);
+      }
     } catch (error) {
       console.error('Error loading tests:', error);
+      setTests([]);
     } finally {
       setIsLoading(false);
     }
   };
 
-  const startTest = (test) => {
+  const startTest = (test: GrowthTest) => {
     setCurrentTest(test);
     setCurrentQuestionIndex(0);
     setAnswers({});
     setShowResults(false);
   };
 
-  const selectAnswer = (questionId, value) => {
+  const selectAnswer = (questionId: string, value: any) => {
     setAnswers(prev => ({
       ...prev,
       [questionId]: value
@@ -66,7 +84,7 @@ export default function GrowthTestsPage() {
   };
 
   const nextQuestion = () => {
-    if (currentQuestionIndex < currentTest.questions.questions.length - 1) {
+    if (currentTest?.questions?.questions && currentQuestionIndex < currentTest.questions.questions.length - 1) {
       setCurrentQuestionIndex(prev => prev + 1);
     }
   };
@@ -84,7 +102,7 @@ export default function GrowthTestsPage() {
       setIsSubmitting(true);
       const result = await submitTestResult(
         parseInt(user?.id || '0'),
-        currentTest.id,
+        parseInt(currentTest.id),
         answers,
         'Test completed successfully',
         []
@@ -100,7 +118,7 @@ export default function GrowthTestsPage() {
     }
   };
 
-  const getCategoryIcon = (category) => {
+  const getCategoryIcon = (category: string) => {
     switch (category) {
       case 'personality': return Brain;
       case 'leadership': return Users;
@@ -111,7 +129,7 @@ export default function GrowthTestsPage() {
     }
   };
 
-  const getCategoryColor = (category) => {
+  const getCategoryColor = (category: string) => {
     switch (category) {
       case 'personality': return COLORS.teal;
       case 'leadership': return COLORS.darkBlue;
@@ -138,7 +156,7 @@ export default function GrowthTestsPage() {
     return null;
   }
 
-  if (currentTest && !showResults) {
+  if (currentTest && currentTest.questions && !showResults) {
     const questions = currentTest.questions.questions;
     const currentQuestion = questions[currentQuestionIndex];
     const progress = (Object.keys(answers).length / questions.length) * 100;
@@ -171,7 +189,7 @@ export default function GrowthTestsPage() {
             </h2>
 
             <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
-              {currentQuestion.options.map((option, index) => (
+              {currentQuestion.options.map((option: any, index: number) => (
                 <button
                   key={index}
                   onClick={() => selectAnswer(currentQuestion.id, option.value)}
@@ -260,7 +278,7 @@ export default function GrowthTestsPage() {
               Test Completed!
             </h1>
             <p style={{ color: COLORS.textGray, fontSize: '18px', margin: '0 0 24px 0' }}>
-              You've successfully completed the assessment.
+              You&apos;ve successfully completed the assessment.
             </p>
             <button
               onClick={() => {
@@ -315,10 +333,10 @@ export default function GrowthTestsPage() {
                 </p>
                 <div style={{ display: 'flex', alignItems: 'center', gap: '16px', marginBottom: '24px' }}>
                   <span style={{ color: COLORS.textGray, fontSize: '14px' }}>
-                    {test.duration_minutes} min
+                    {test.estimated_duration} min
                   </span>
                   <span style={{ color: COLORS.textGray, fontSize: '14px' }}>
-                    {test.questions.questions.length} questions
+                    {test.questions?.questions?.length || 0} questions
                   </span>
                 </div>
                 <button

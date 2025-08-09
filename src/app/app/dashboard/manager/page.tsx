@@ -521,10 +521,10 @@ ${currentManager?.name}`;
       const testsData = await getGrowthTests(employeeId);
       const insightsData = await getGrowthInsights(employeeId);
 
-      setGrowthTests(testsData.tests || []);
-      setCompletedTests(testsData.completedTests || []);
-      setGrowthInsights(insightsData.insights || []);
-      setAdditionalInsights(insightsData.additionalInsights || []);
+      setGrowthTests(testsData?.tests || []);
+      setCompletedTests(testsData?.completedTests || []);
+      setGrowthInsights(insightsData?.insights || []);
+      setAdditionalInsights(insightsData?.additionalInsights || []);
       
       // For now, we'll use sample data for goals and skills
       // In a real implementation, these would be fetched from the database

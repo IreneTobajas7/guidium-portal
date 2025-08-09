@@ -50,19 +50,26 @@ export async function GET(request: NextRequest) {
     }
 
     // Generate additional insights based on test results
-    const additionalInsights: any[] = [];
+    const additionalInsights: Array<{
+      insight_type: string;
+      title: string;
+      description: string;
+      confidence_score: number;
+      is_positive: boolean;
+      actionable_items: string[];
+    }> = [];
     if (testResults && testResults.length > 0) {
       // Group insights by type
       const personalityTests = testResults.filter(tr => {
-        const testName = (tr.growth_tests as any)?.name || '';
+        const testName = (tr.growth_tests as { name?: string })?.name || '';
         return testName.toLowerCase().includes('personality') || testName.toLowerCase().includes('myers') || testName.toLowerCase().includes('disc');
       });
       const leadershipTests = testResults.filter(tr => {
-        const testName = (tr.growth_tests as any)?.name || '';
+        const testName = (tr.growth_tests as { name?: string })?.name || '';
         return testName.toLowerCase().includes('leadership');
       });
       const communicationTests = testResults.filter(tr => {
-        const testName = (tr.growth_tests as any)?.name || '';
+        const testName = (tr.growth_tests as { name?: string })?.name || '';
         return testName.toLowerCase().includes('communication');
       });
 

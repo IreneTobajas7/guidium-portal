@@ -1,5 +1,5 @@
 "use client";
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, Suspense } from "react";
 import Image from "next/image";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
@@ -37,7 +37,7 @@ const NAV_INACTIVE_BG = "rgba(255,255,255,0.5)";
 const NAV_ACTIVE_COLOR = COLORS.white;
 const NAV_INACTIVE_COLOR = COLORS.darkBlue;
 
-export default function EmployeeDashboardPage() {
+function EmployeeDashboardPage() {
   const { user, isLoaded } = useUser();
   const router = useRouter();
   const searchParams = useSearchParams();
@@ -515,12 +515,28 @@ export default function EmployeeDashboardPage() {
       const testsData = await getGrowthTests(currentNewHire.id);
       const insightsData = await getGrowthInsights(currentNewHire.id);
 
-      setGrowthTests(testsData.tests || []);
-      setCompletedTests(testsData.completedTests || []);
-      setGrowthInsights(insightsData.insights || []);
-      setAdditionalInsights(insightsData.additionalInsights || []);
+      if (testsData) {
+        setGrowthTests(testsData.tests || []);
+        setCompletedTests(testsData.completedTests || []);
+      } else {
+        setGrowthTests([]);
+        setCompletedTests([]);
+      }
+
+      if (insightsData) {
+        setGrowthInsights(insightsData.insights || []);
+        setAdditionalInsights(insightsData.additionalInsights || []);
+      } else {
+        setGrowthInsights([]);
+        setAdditionalInsights([]);
+      }
     } catch (error) {
       console.error('Error fetching growth data:', error);
+      // Set empty arrays on error
+      setGrowthTests([]);
+      setCompletedTests([]);
+      setGrowthInsights([]);
+      setAdditionalInsights([]);
     }
   };
 
@@ -4992,4 +5008,15 @@ function ResourceForm({
        </div>
      </form>
    );
- } 
+ }
+
+// Wrapper component to handle search params with Suspense
+function EmployeeDashboardWrapper() {
+  return (
+    <Suspense fallback={<div>Loading...</div>}>
+      <EmployeeDashboardPage />
+    </Suspense>
+  );
+}
+
+export default EmployeeDashboardWrapper;

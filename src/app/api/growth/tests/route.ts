@@ -25,7 +25,18 @@ export async function GET(request: NextRequest) {
     }
 
     // If newHireId is provided, also get completed tests
-    let completedTests: any[] = [];
+    let completedTests: Array<{
+      id: string;
+      test_id: string;
+      result_summary: string;
+      insights: string[];
+      completed_at: string;
+      growth_tests: {
+        id: string;
+        name: string;
+        category: string;
+      }[];
+    }> = [];
     if (newHireId) {
       const { data: completed, error: completedError } = await supabase
         .schema('api')
@@ -53,7 +64,7 @@ export async function GET(request: NextRequest) {
     }
 
     // Mark which tests are completed
-    const testsWithCompletionStatus = tests?.map((test: any) => ({
+    const testsWithCompletionStatus = tests?.map((test: { id: string; name: string; description: string; category: string; estimated_duration: number }) => ({
       ...test,
       isCompleted: completedTests.some(ct => ct.test_id === test.id),
       completedResult: completedTests.find(ct => ct.test_id === test.id)

@@ -29,11 +29,9 @@ export async function POST(request: NextRequest) {
     }
 
     // Generate AI-powered onboarding plan
-    let aiPlan;
-    
     // TEMPORARILY DISABLED - OpenAI API usage paused
     // try {
-    //   aiPlan = await generateAIOnboardingPlan({
+    //   const aiPlan = await generateAIOnboardingPlan({
     //     role,
     //     startDate: start_date,
     //     newHireName: new_hire_name,
@@ -46,7 +44,7 @@ export async function POST(request: NextRequest) {
     // }
     
     // Use fallback plan instead of AI generation
-    aiPlan = {
+    const aiPlan = {
       milestones: [
         {
           id: "day_1",
@@ -427,9 +425,9 @@ export async function PATCH(request: NextRequest) {
     // Update the specific task status in the plan_data
     const planData = currentPlan.plan_data;
     if (planData && planData.milestones) {
-      const milestone = planData.milestones.find((m: any) => m.id === milestoneId);
+      const milestone = planData.milestones.find((m: { id: string; tasks?: Array<{ id: number | string; name: string; status: string }> }) => m.id === milestoneId);
       if (milestone && milestone.tasks) {
-        const task = milestone.tasks.find((t: any) => t.id === taskId || t.name === taskId);
+        const task = milestone.tasks.find((t: { id: number | string; name: string; status: string }) => t.id === taskId || t.name === taskId);
         if (task) {
           task.status = status;
         }

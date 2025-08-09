@@ -647,9 +647,9 @@ export default function GuidiumLanding() {
               <div className="bg-gradient-to-br from-[#2A9D8F]/10 to-[#264653]/10 p-8 rounded-2xl border border-[#2A9D8F]/20 max-w-md mx-auto">
                 <CheckCircle className="h-12 w-12 text-[#2A9D8F] mx-auto mb-4" />
                 <h3 className="text-2xl font-bold text-[#264653] mb-3">Thank you for your interest!</h3>
-                <p className="text-gray-600">
-                  We've received your application for early access. Our team will be in touch with you shortly.
-                </p>
+                                  <p className="text-gray-600">
+                    We&apos;ve received your application for early access. Our team will be in touch with you shortly.
+                  </p>
               </div>
             ) : (
               <div className="bg-white rounded-2xl border border-gray-200 p-8 shadow-2xl max-w-lg mx-auto relative">

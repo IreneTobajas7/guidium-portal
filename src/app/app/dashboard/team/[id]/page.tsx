@@ -175,10 +175,10 @@ console.log('Fetched resources:', resourcesData);
       const testsData = await getGrowthTests(currentNewHire.id);
       const insightsData = await getGrowthInsights(currentNewHire.id);
 
-      setGrowthTests(testsData.tests || []);
-      setCompletedTests(testsData.completedTests || []);
-      setGrowthInsights(insightsData.insights || []);
-      setAdditionalInsights(insightsData.additionalInsights || []);
+      setGrowthTests(testsData?.tests || []);
+      setCompletedTests(testsData?.completedTests || []);
+      setGrowthInsights(insightsData?.insights || []);
+      setAdditionalInsights(insightsData?.additionalInsights || []);
     } catch (error) {
       console.error('Error fetching growth data:', error);
     }

@@ -127,7 +127,7 @@ export async function fetchResources(employeeId?: number): Promise<Resource[]> {
       throw new Error(`Failed to fetch resources: ${response.status} ${errorText}`);
     }
     
-    let resources: Resource[] = await response.json();
+    const resources: Resource[] = await response.json();
     
     console.log('fetchResources - All resources:', resources);
     console.log('fetchResources - Employee ID:', employeeId, 'Type:', typeof employeeId);
@@ -600,7 +600,18 @@ export async function deleteTaskComment(commentId: number): Promise<boolean> {
 }
 
 // Growth API functions
-export async function getGrowthTests(newHireId?: number): Promise<any> {
+export async function getGrowthTests(newHireId?: number): Promise<{
+  tests: Array<{
+    id: string;
+    name: string;
+    description: string;
+    category: string;
+    estimated_duration: number;
+    isCompleted?: boolean;
+    completedResult?: any;
+  }>;
+  completedTests: any[];
+} | null> {
   try {
     const url = newHireId ? `/api/growth/tests?newHireId=${newHireId}` : '/api/growth/tests';
     const response = await fetch(url, {
