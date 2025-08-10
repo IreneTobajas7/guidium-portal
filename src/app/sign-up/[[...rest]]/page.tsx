@@ -59,7 +59,7 @@ export default function SignUpPage() {
           {/* Auth Card */}
           <div className="bg-white rounded-2xl shadow-2xl p-8 border border-gray-100">
             <SignUp 
-              redirectUrl="/app/dashboard"
+              fallbackRedirectUrl="/app/dashboard"
               appearance={{
                 elements: {
                   rootBox: { 
@@ -156,7 +156,6 @@ export default function SignUpPage() {
                   }
                 }
               }}
-              afterSignUpUrl="/app/dashboard"
             />
           </div>
         </div>
